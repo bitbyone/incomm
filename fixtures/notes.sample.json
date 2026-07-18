@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "notes": [
+    {
+      "id": "c7f3a1b2",
+      "file": "src/app/main.go",
+      "startLine": 12,
+      "endLine": 12,
+      "anchor": {
+        "startPrefix": "func doThing(ctx context.Context)",
+        "endPrefix": "func doThing(ctx context.Context)",
+        "contextBefore": "// entrypoint",
+        "contextAfter": "return nil",
+        "checksum": "sha1:0000000000000000000000000000000000000000"
+      },
+      "content": "Please add error handling here.",
+      "resolved": false,
+      "orphaned": false,
+      "author": "user",
+      "createdAt": "2026-07-17T10:00:00Z",
+      "updatedAt": "2026-07-17T10:00:00Z",
+      "replies": [
+        {
+          "id": "r1a2b3",
+          "author": "agent",
+          "content": "Done - wrapped the call in an error check and returned early.",
+          "createdAt": "2026-07-17T10:05:00Z"
+        }
+      ]
+    },
+    {
+      "id": "d4e5f6a7",
+      "file": "src/app/util.go",
+      "startLine": 30,
+      "endLine": 34,
+      "anchor": {
+        "startPrefix": "func Sum(values []int) int {",
+        "endPrefix": "}",
+        "contextBefore": "",
+        "contextAfter": "",
+        "checksum": "sha1:1111111111111111111111111111111111111111"
+      },
+      "content": "This whole function could use table-driven tests.",
+      "resolved": true,
+      "orphaned": false,
+      "author": "user",
+      "createdAt": "2026-07-16T09:00:00Z",
+      "updatedAt": "2026-07-16T12:30:00Z",
+      "replies": []
+    },
+    {
+      "id": "e8f9a0b1",
+      "file": "README.md",
+      "startLine": 1,
+      "endLine": 1,
+      "anchor": {
+        "startPrefix": "# Old Project Title",
+        "endPrefix": "# Old Project Title",
+        "contextBefore": "",
+        "contextAfter": "",
+        "checksum": "sha1:2222222222222222222222222222222222222222"
+      },
+      "content": "Title looks stale; verify against the current name.",
+      "resolved": false,
+      "orphaned": true,
+      "author": "agent",
+      "createdAt": "2026-07-15T08:00:00Z",
+      "updatedAt": "2026-07-17T11:00:00Z",
+      "replies": []
+    }
+  ]
+}

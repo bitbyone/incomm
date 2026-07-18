@@ -1,0 +1,21 @@
+# ---- IntelliJ plugin / Gradle ----
+.gradle/
+.kotlin/
+build/
+.intellijPlatform/
+!gradle/wrapper/gradle-wrapper.jar
+*.iml
+.idea/
+out/
+
+# ---- Go CLI ----
+cli/incomm
+cli/dist/
+*.test
+*.out
+
+# ---- OS ----
+.DS_Store
+
+# ---- incomm runtime data (created inside target projects, not this repo) ----
+.incomm/

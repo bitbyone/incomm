@@ -1,0 +1,25 @@
+package app
+
+import (
+	"context"
+	"fmt"
+)
+
+// entrypoint
+func doThing(ctx context.Context) error {
+	fmt.Println("thinking")
+	return nil
+}
+
+func Sum(values []int) int {
+	total := 0
+	for _, v := range values {
+		total += v
+	}
+	return total
+}
+
+func helper() {
+	total := 0
+	return
+}

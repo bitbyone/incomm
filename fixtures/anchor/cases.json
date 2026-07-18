@@ -1,0 +1,81 @@
+{
+  "file": "base.txt",
+  "note": "Shared re-anchoring cases. Both the Kotlin and Go test suites load base.txt and assert reanchor(case) == expected. checksum is empty so the checksum bonus is skipped (keeps fixtures hand-authorable).",
+  "cases": [
+    {
+      "name": "fast_path",
+      "startLine": 9,
+      "endLine": 9,
+      "anchor": {
+        "startPrefix": "func doThing(ctx context.Context) error {",
+        "endPrefix": "func doThing(ctx context.Context) error {",
+        "contextBefore": "// entrypoint",
+        "contextAfter": "fmt.Println(\"thinking\")",
+        "checksum": ""
+      },
+      "expectStartLine": 9,
+      "expectEndLine": 9,
+      "expectOrphaned": false
+    },
+    {
+      "name": "shifted_down_from_stale_line",
+      "startLine": 6,
+      "endLine": 6,
+      "anchor": {
+        "startPrefix": "func doThing(ctx context.Context) error {",
+        "endPrefix": "func doThing(ctx context.Context) error {",
+        "contextBefore": "// entrypoint",
+        "contextAfter": "fmt.Println(\"thinking\")",
+        "checksum": ""
+      },
+      "expectStartLine": 9,
+      "expectEndLine": 9,
+      "expectOrphaned": false
+    },
+    {
+      "name": "multiline_shift",
+      "startLine": 11,
+      "endLine": 17,
+      "anchor": {
+        "startPrefix": "func Sum(values []int) int {",
+        "endPrefix": "}",
+        "contextBefore": "",
+        "contextAfter": "",
+        "checksum": ""
+      },
+      "expectStartLine": 14,
+      "expectEndLine": 20,
+      "expectOrphaned": false
+    },
+    {
+      "name": "orphaned_when_gone",
+      "startLine": 5,
+      "endLine": 5,
+      "anchor": {
+        "startPrefix": "func deletedFunction() error {",
+        "endPrefix": "func deletedFunction() error {",
+        "contextBefore": "",
+        "contextAfter": "",
+        "checksum": ""
+      },
+      "expectStartLine": 5,
+      "expectEndLine": 5,
+      "expectOrphaned": true
+    },
+    {
+      "name": "context_beats_distance",
+      "startLine": 23,
+      "endLine": 23,
+      "anchor": {
+        "startPrefix": "total := 0",
+        "endPrefix": "total := 0",
+        "contextBefore": "func Sum(values []int) int {",
+        "contextAfter": "for _, v := range values {",
+        "checksum": ""
+      },
+      "expectStartLine": 15,
+      "expectEndLine": 15,
+      "expectOrphaned": false
+    }
+  ]
+}

@@ -69,6 +69,16 @@ class NoteInlayController(
 
     fun refresh() = rebuild()
 
+    /**
+     * Update just the location header of every card in place (no inlay rebuild),
+     * after live re-anchoring moved notes. Cheap and viewport-safe.
+     */
+    fun refreshLocations() {
+        for (entry in cards.values) {
+            if (entry.inlay.isValid) entry.card.refreshLocation()
+        }
+    }
+
     private fun rebuild() = keepScroll { rebuildInlays() }
 
     /** Keep the editor's viewport fixed while inlays are added/removed. */
@@ -101,7 +111,9 @@ class NoteInlayController(
         disposeCompose()
         val tracker = IncommEditorTracker.getInstance(project)
         val desired = if (!tracker.inlaysVisible) emptyList()
-        else NotesService.getInstance(project).notesForFile(rel).filterNot { tracker.isNoteHidden(it.id) }
+        else NotesService.getInstance(project).notesForFile(rel)
+            .filterNot { it.isHiddenInEditor() }
+            .filterNot { tracker.isNoteHidden(it.id) }
         val desiredIds = desired.mapTo(HashSet()) { it.id }
 
         // Drop cards that are gone/hidden; keep the rest so the page doesn't churn.
@@ -129,6 +141,7 @@ class NoteInlayController(
         val tracker = IncommEditorTracker.getInstance(project)
         if (!tracker.inlaysVisible || tracker.isNoteHidden(noteId)) return@keepScroll
         val note = NotesService.getInstance(project).find(noteId) ?: return@keepScroll
+        if (note.isHiddenInEditor()) return@keepScroll
         if (note.file == rel) addCard(note)
     }
 
@@ -137,7 +150,7 @@ class NoteInlayController(
         val doc = editor.document
         val lineCount = doc.lineCount
         if (lineCount == 0) return
-        val startLine0 = (note.startLine - 1).coerceIn(0, lineCount - 1)
+        val startLine0 = (note.displayStartLine() - 1).coerceIn(0, lineCount - 1)
         // Always render the interactive card above the first line.
         val offset = doc.getLineStartOffset(startLine0)
         val card = NoteCardComponent(
@@ -194,6 +207,7 @@ class NoteInlayController(
         val note = NotesService.getInstance(project).find(noteId) ?: return
         startCompose(note.startLine, "new reply") { text ->
             NotesService.getInstance(project).addReply(noteId, text, AUTHOR_USER)
+            null
         }
     }
 
@@ -209,8 +223,14 @@ class NoteInlayController(
         }
     }
 
-    /** Shared inline composer used by both add and reply. */
-    private fun startCompose(anchorLine: Int, subtitle: String, onSave: (String) -> Unit) {
+    /**
+     * Shared inline composer used by both add and reply. [onSave] performs the
+     * model mutation and returns the newly created [Note] (for a brand-new
+     * comment) or null (for a reply); the returned note's card is added in the
+     * same scroll-kept pass that removes the composer, so a new comment never
+     * makes the editor jump.
+     */
+    private fun startCompose(anchorLine: Int, subtitle: String, onSave: (String) -> Note?) {
         val ex = editor as? EditorEx ?: return
         disposeCompose()
 
@@ -241,8 +261,18 @@ class NoteInlayController(
 
         fun save() {
             val text = field.text.trim()
-            if (text.isNotEmpty()) onSave(text)
-            closeCompose()
+            if (text.isEmpty()) {
+                closeCompose()
+                return
+            }
+            // Swap the composer for the resulting card in a single scroll-kept
+            // pass so the viewport doesn't jump; the async notes-changed refresh
+            // then just refreshes that card in place.
+            keepScroll {
+                disposeCompose()
+                val created = onSave(text)
+                if (created != null && created.file == rel) addCard(created)
+            }
         }
 
         icons.add(ThreadUi.iconButton(IncommIcons.CHECK, "Save") { save() })

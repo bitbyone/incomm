@@ -2,12 +2,16 @@ package dev.incomm.editor
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.editor.event.DocumentEvent
+import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.event.EditorFactoryEvent
 import com.intellij.openapi.editor.event.EditorFactoryListener
+import com.intellij.openapi.editor.ex.util.EditorScrollingPositionKeeper
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.HighlighterTargetArea
@@ -17,12 +21,15 @@ import com.intellij.openapi.fileEditor.FileDocumentManagerListener
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.util.Alarm
 import dev.incomm.anchor.Anchoring
 import dev.incomm.store.IncommNotesListener
 import dev.incomm.store.IncommPaths
+import dev.incomm.store.IncommSourceFileWatcher
 import dev.incomm.store.NotesFileWatcher
 import dev.incomm.store.NotesService
 import dev.incomm.ui.NoteGutterIconRenderer
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Project-level owner of per-document gutter icons for notes. Icons live in the
@@ -51,6 +58,16 @@ class IncommEditorTracker(private val project: Project) : Disposable {
     /** Per-editor gutter range-band controllers (hover/caret). */
     private val rangeControllers = HashMap<Editor, NoteRangeHighlighter>()
     private var started = false
+
+    /**
+     * Rel paths of files currently open in an editor. Maintained on the EDT but
+     * read from the (background) source-file watcher, so it is a concurrent set.
+     */
+    private val openRels = ConcurrentHashMap.newKeySet<String>()
+
+    /** Debounces live re-anchoring while the user is typing. */
+    private val reanchorAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+    private val pendingDocs = HashSet<Document>()
 
     /** Whether the inline comment cards are shown (gutter icons stay regardless). */
     var inlaysVisible = true
@@ -132,6 +149,19 @@ class IncommEditorTracker(private val project: Project) : Disposable {
             override fun editorReleased(event: EditorFactoryEvent) = onEditorReleased(event.editor)
         }, this)
 
+        // Live re-anchoring: while a tracked document is edited, recompute and
+        // persist note positions (debounced) so notes.json — and every rendered
+        // block — tracks added/removed lines and anchor-text edits as they happen.
+        factory.eventMulticaster.addDocumentListener(object : DocumentListener {
+            override fun documentChanged(event: DocumentEvent) {
+                val doc = event.document
+                if (!entries.containsKey(doc)) return
+                pendingDocs.add(doc)
+                reanchorAlarm.cancelAllRequests()
+                reanchorAlarm.addRequest({ flushPendingReanchors() }, REANCHOR_DELAY_MS)
+            }
+        }, this)
+
         project.messageBus.connect(this).subscribe(
             IncommNotesListener.TOPIC,
             IncommNotesListener {
@@ -152,6 +182,11 @@ class IncommEditorTracker(private val project: Project) : Disposable {
         // React to external edits of notes.json (agent/CLI writes).
         VirtualFileManager.getInstance().addAsyncFileListener(NotesFileWatcher(project), this)
 
+        // React to external edits of source files (agent/CLI code edits) that are
+        // not open in an editor, reanchoring their notes from disk.
+        VirtualFileManager.getInstance()
+            .addAsyncFileListener(IncommSourceFileWatcher(project) { rel -> rel in openRels }, this)
+
         // Attach to editors that are already open (e.g. restored on project load).
         for (editor in factory.allEditors) {
             if (editor.project == project) onEditorCreated(editor)
@@ -171,6 +206,7 @@ class IncommEditorTracker(private val project: Project) : Disposable {
         editorControllers[editor] = AddGutterController(project, editor, rel, this)
         inlayControllers[editor] = NoteInlayController(project, editor, rel, this)
         rangeControllers[editor] = NoteRangeHighlighter(project, editor, rel, this)
+        refreshOpenRels()
     }
 
     private fun onEditorReleased(editor: Editor) {
@@ -184,13 +220,52 @@ class IncommEditorTracker(private val project: Project) : Disposable {
             clear(entry)
             entries.remove(document)
         }
+        refreshOpenRels()
+    }
+
+    /** Refresh the concurrent set of open rel paths from the current entries (EDT). */
+    private fun refreshOpenRels() {
+        openRels.clear()
+        entries.values.mapTo(openRels) { it.rel }
+    }
+
+    /** Persist recomputed positions for every document that changed since the last flush. */
+    private fun flushPendingReanchors() {
+        if (project.isDisposed) return
+        val docs = pendingDocs.toList()
+        pendingDocs.clear()
+        for (doc in docs) {
+            if (!entries.containsKey(doc)) continue
+            persistPositions(doc)
+            // Update each card's line-number header in place. Position-only moves
+            // persist quietly (no rebuild), so the header would otherwise go stale.
+            for ((editor, controller) in inlayControllers) {
+                if (editor.document === doc) controller.refreshLocations()
+            }
+        }
     }
 
     private fun refreshAll() {
+        // Keep every visible editor's viewport fixed across the whole rebuild so
+        // only the rendered thread blocks move — the code never scrolls. Embedded
+        // components settle their height on a later layout pass, hence the second
+        // (invokeLater) restore.
+        val keepers = EditorFactory.getInstance().allEditors
+            .filter { it.project == project && !it.isDisposed }
+            .map { EditorScrollingPositionKeeper(it).also { k -> k.savePosition() } }
+
         for ((document, entry) in entries) rebuild(document, entry)
         for (controller in editorControllers.values) controller.refresh()
         for (controller in inlayControllers.values) controller.refresh()
         for (controller in rangeControllers.values) controller.refresh()
+
+        for (k in keepers) k.restorePosition(false)
+        ApplicationManager.getApplication().invokeLater({
+            for (k in keepers) {
+                if (!project.isDisposed) k.restorePosition(false)
+                k.dispose()
+            }
+        }, ModalityState.any())
     }
 
     private fun rebuild(document: Document, entry: DocEntry) {
@@ -202,8 +277,11 @@ class IncommEditorTracker(private val project: Project) : Disposable {
 
         val markup = DocumentMarkupModel.forDocument(document, project, true)
         for (note in notes) {
-            val startLine0 = (note.startLine - 1).coerceIn(0, lineCount - 1)
-            val endLine0 = (note.endLine - 1).coerceIn(startLine0, lineCount - 1)
+            // Orphaned+resolved notes are fully hidden; orphaned+unresolved float
+            // to the first line rather than staying on their stale range.
+            if (note.isHiddenInEditor()) continue
+            val startLine0 = (note.displayStartLine() - 1).coerceIn(0, lineCount - 1)
+            val endLine0 = (note.displayEndLine() - 1).coerceIn(startLine0, lineCount - 1)
             val startOffset = document.getLineStartOffset(startLine0)
             val endOffset = document.getLineEndOffset(endLine0)
             val hl = markup.addRangeHighlighter(
@@ -235,9 +313,13 @@ class IncommEditorTracker(private val project: Project) : Disposable {
     /** On save, read each note's current line from its (moved) range marker and persist. */
     private fun persistPositions(document: Document) {
         val entry = entries[document] ?: return
+        val service = NotesService.getInstance(project)
         val positions = HashMap<String, Pair<Int, Int>>()
         for (hl in entry.highlighters) {
             val id = entry.noteIdByHighlighter[hl] ?: continue
+            // Orphaned notes are floated to line 1 for display only; never persist
+            // that synthetic position — let the service re-anchor them by text.
+            if (service.find(id)?.orphaned == true) continue
             if (hl.isValid && hl.endOffset >= hl.startOffset) {
                 val s = document.getLineNumber(hl.startOffset) + 1
                 val e = document.getLineNumber(hl.endOffset) + 1
@@ -250,6 +332,9 @@ class IncommEditorTracker(private val project: Project) : Disposable {
     }
 
     override fun dispose() {
+        reanchorAlarm.cancelAllRequests()
+        pendingDocs.clear()
+        openRels.clear()
         for (entry in entries.values) clear(entry)
         entries.clear()
         editorControllers.clear()
@@ -259,6 +344,9 @@ class IncommEditorTracker(private val project: Project) : Disposable {
 
     companion object {
         private const val LAYER = HighlighterLayer.ADDITIONAL_SYNTAX
+
+        /** Idle delay after the last keystroke before live positions are persisted. */
+        private const val REANCHOR_DELAY_MS = 400
 
         fun getInstance(project: Project): IncommEditorTracker =
             project.getService(IncommEditorTracker::class.java)

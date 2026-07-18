@@ -4,7 +4,7 @@ import java.security.SecureRandom
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
-/** Current notes.json schema version. Must match SCHEMA.md / the Go CLI. */
+/** Current notes.json schema version. Must match README.md (data-format spec) / the Go CLI. */
 const val SCHEMA_VERSION = 1
 
 const val AUTHOR_USER = "user"
@@ -65,6 +65,20 @@ data class Note(
     /** Human-readable `file:line` (or `file:start-end`) location. */
     fun location(): String =
         if (endLine != startLine) "$file:$startLine-$endLine" else "$file:$startLine"
+
+    /**
+     * Whether this note should be drawn in the editor gutter / inline at all.
+     * An orphaned note that is also resolved is fully hidden from the editor.
+     */
+    fun isHiddenInEditor(): Boolean = orphaned && resolved
+
+    /**
+     * The 1-based line the note anchors to for editor rendering. Orphaned notes
+     * have lost their real location, so they float to the file's first line.
+     */
+    fun displayStartLine(): Int = if (orphaned) 1 else startLine
+
+    fun displayEndLine(): Int = if (orphaned) 1 else endLine
 
     /** Deep, independent copy (anchor + replies not shared). */
     fun deepCopy(): Note =

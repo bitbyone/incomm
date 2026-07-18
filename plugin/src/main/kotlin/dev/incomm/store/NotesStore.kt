@@ -81,7 +81,7 @@ class NotesStore(val root: Path) {
         const val FILE_NAME = "notes.json"
 
         // HTML escaping disabled for readable output; field order follows the
-        // data-class declaration, matching the Go struct order in SCHEMA.md.
+        // data-class declaration, matching the Go struct order in the README spec.
         private val GSON = GsonBuilder()
             .setPrettyPrinting()
             .disableHtmlEscaping()

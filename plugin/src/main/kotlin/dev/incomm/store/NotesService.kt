@@ -49,6 +49,10 @@ class NotesService(private val project: Project) : Disposable {
     fun notesForFile(rel: String): List<Note> =
         synchronized(lock) { model.notes.filter { it.file == rel }.map { it.deepCopy() } }
 
+    /** Whether any note anchors to [rel] (cheap; no copying). */
+    fun hasNotesForFile(rel: String): Boolean =
+        synchronized(lock) { model.notes.any { it.file == rel } }
+
     fun find(id: String): Note? = synchronized(lock) { model.find(id)?.deepCopy() }
 
     fun isEmpty(): Boolean = synchronized(lock) { model.notes.isEmpty() }
@@ -71,8 +75,13 @@ class NotesService(private val project: Project) : Disposable {
             thisLogger().warn("incomm: failed to load ${store.notesPath}", e)
             NotesFile()
         }
-        synchronized(lock) { model = loaded }
-        if (publish) publishChanged()
+        // Skip the notification (and the UI rebuild it drives) when the file on
+        // disk already matches memory — e.g. the reload triggered by our own
+        // atomic write. This avoids redundant, viewport-disturbing refreshes.
+        val changed = synchronized(lock) {
+            if (model == loaded) false else { model = loaded; true }
+        }
+        if (publish && changed) publishChanged()
     }
 
     // ---- mutations ---------------------------------------------------------
@@ -144,30 +153,50 @@ class NotesService(private val project: Project) : Disposable {
     }
 
     /**
-     * Persist positions for all notes of one file after a save. [positions] maps
+     * Persist positions for all notes of one file after an edit. [positions] maps
      * note id -> (startLine,endLine) for notes whose live range marker survived;
      * notes not present are re-anchored by text (or marked orphaned).
+     *
+     * Position-only updates persist **quietly** (no [publishChanged]): the editor's
+     * range markers and block inlays already track document edits natively, so
+     * rebuilding them would only disturb the viewport. A rebuild is published only
+     * when something visual actually changes — a note un-orphans, or a note whose
+     * marker died had to be re-anchored by text (its gutter marker must be rebuilt).
      */
     fun applySavedPositions(rel: String, fileLines: List<String>, positions: Map<String, Pair<Int, Int>>) {
         var changed = false
+        var needsRebuild = false
         synchronized(lock) {
             for (note in model.notes) {
                 if (note.file != rel) continue
                 val pos = positions[note.id]
                 if (pos != null) {
-                    if (note.startLine != pos.first || note.endLine != pos.second || note.orphaned) {
+                    // Recompute the anchor too so editing the anchored line's text
+                    // (not just adding/removing lines) refreshes it live.
+                    val newAnchor = Anchoring.compute(fileLines, pos.first, pos.second)
+                    if (note.startLine != pos.first || note.endLine != pos.second ||
+                        note.orphaned || note.anchor != newAnchor
+                    ) {
+                        if (note.orphaned) needsRebuild = true // un-orphaning changes the gutter icon
                         note.startLine = pos.first
                         note.endLine = pos.second
-                        note.anchor = Anchoring.compute(fileLines, pos.first, pos.second)
+                        note.anchor = newAnchor
                         note.orphaned = false
                         changed = true
                     }
-                } else if (Anchoring.reanchor(note, fileLines)) {
-                    changed = true
+                } else {
+                    // No surviving marker: the gutter highlighter is gone, so a
+                    // successful text re-anchor requires rebuilding it.
+                    if (Anchoring.reanchor(note, fileLines)) {
+                        changed = true
+                        needsRebuild = true
+                    }
                 }
             }
         }
-        if (changed) persistAndNotify()
+        if (changed) {
+            if (needsRebuild) persistAndNotify() else persistQuietly()
+        }
     }
 
     fun removeNote(id: String): Boolean {
@@ -226,6 +255,34 @@ class NotesService(private val project: Project) : Disposable {
         return changed
     }
 
+    /**
+     * Reanchor only the notes belonging to [rels] against their on-disk
+     * contents (used when a source file changes outside any open editor).
+     * Missing files mark their notes orphaned. Returns whether anything changed.
+     */
+    fun reanchorFilesFromDisk(rels: Set<String>): Boolean {
+        if (rels.isEmpty()) return false
+        val store = storeOrNull() ?: return false
+        var changed = false
+        synchronized(lock) {
+            val cache = HashMap<String, List<String>?>()
+            for (note in model.notes) {
+                if (note.file !in rels) continue
+                val lines = cache.getOrPut(note.file) { store.readLines(note.file) }
+                if (lines == null) {
+                    if (!note.orphaned) {
+                        note.orphaned = true
+                        changed = true
+                    }
+                    continue
+                }
+                if (Anchoring.reanchor(note, lines)) changed = true
+            }
+        }
+        if (changed) persistAndNotify()
+        return changed
+    }
+
     private inline fun mutate(id: String, block: (Note) -> Unit): Boolean {
         val hit = synchronized(lock) {
             val note = model.find(id) ?: return false
@@ -241,6 +298,20 @@ class NotesService(private val project: Project) : Disposable {
     private fun persistAndNotify() {
         val snapshot = synchronized(lock) { model.deepCopy() }
         publishChanged()
+        writeSnapshot(snapshot)
+    }
+
+    /**
+     * Persist to disk without notifying listeners (no UI rebuild). Used for
+     * live position tracking, where the editor already renders correctly and a
+     * rebuild would only disturb the viewport. The CLI still sees the update.
+     */
+    private fun persistQuietly() {
+        val snapshot = synchronized(lock) { model.deepCopy() }
+        writeSnapshot(snapshot)
+    }
+
+    private fun writeSnapshot(snapshot: NotesFile) {
         val store = storeOrNull() ?: return
         writeExecutor.execute {
             try {

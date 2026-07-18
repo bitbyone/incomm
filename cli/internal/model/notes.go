@@ -1,5 +1,5 @@
 // Package model defines the on-disk data types for .incomm/notes.json.
-// The JSON tags MUST match SCHEMA.md exactly; the Kotlin plugin mirrors these.
+// The JSON tags MUST match the README data-format spec exactly; the Kotlin plugin mirrors these.
 package model
 
 import (
@@ -40,7 +40,7 @@ type Note struct {
 }
 
 // Anchor holds the best-effort textual anchor used to re-find a note's line
-// after the file changes. See SCHEMA.md for the algorithm.
+// after the file changes. See README.md for the algorithm.
 type Anchor struct {
 	StartPrefix   string `json:"startPrefix"`
 	EndPrefix     string `json:"endPrefix"`

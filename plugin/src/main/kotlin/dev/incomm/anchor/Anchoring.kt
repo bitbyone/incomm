@@ -6,7 +6,8 @@ import java.security.MessageDigest
 import kotlin.math.abs
 
 /**
- * Shared, deterministic line-anchoring algorithm (see SCHEMA.md). This is a
+ * Shared, deterministic line-anchoring algorithm (see the "Data format &
+ * anchoring specification" chapter in README.md). This is a
  * pure port of the Go `internal/anchor` package — keep the two in lockstep;
  * both test suites run against `/fixtures/anchor`.
  */

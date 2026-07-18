@@ -2,7 +2,6 @@ package dev.incomm.ui
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.editor.EditorFactory
-import com.intellij.openapi.editor.colors.EditorColors
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.TextAttributes
@@ -11,7 +10,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.ui.EditorTextField
 import com.intellij.ui.InplaceButton
-import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
@@ -89,7 +87,7 @@ class NoteThreadComponent(
         focusAfterBuild = null
 
         val state = when {
-            note.orphaned -> "unanchored"
+            note.orphaned -> "orphaned"
             note.resolved -> "resolved"
             else -> "open"
         }
@@ -196,8 +194,9 @@ class NoteThreadComponent(
 
     private fun highlightSnippetLine(editor: EditorEx, line: Int) {
         if (line < 0 || line >= editor.document.lineCount) return
-        val bg = editor.colorsScheme.getColor(EditorColors.CARET_ROW_COLOR)
-            ?: JBColor(0xEDF3FE, 0x2E3A47)
+        // Match the editor's active caret-row colour so the note's line(s) look
+        // highlighted exactly like the line the cursor sits on.
+        val bg = IncommColors.caretRow(editor.colorsScheme)
         val attrs = TextAttributes().apply { backgroundColor = bg }
         editor.markupModel.addLineHighlighter(line, HighlighterLayer.CARET_ROW, attrs)
     }

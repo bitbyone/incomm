@@ -44,14 +44,27 @@ class NoteListCellRenderer : ListCellRenderer<Note> {
         bottom.clear()
 
         panel.isOpaque = true
-        panel.background = if (selected) UIUtil.getListSelectionBackground(focused) else UIUtil.getListBackground()
+        // Resolved rows read as success (green), orphaned rows as error (red).
+        // A thread that is both resolved and orphaned uses the resolved (green)
+        // background — being resolved is what matters — but still lists both
+        // states in its label. The selected variant uses the stronger border tone.
+        val stateBg: java.awt.Color? = when {
+            note.resolved -> if (selected) IncommColors.resolvedRowBgSelected else IncommColors.resolvedRowBg
+            note.orphaned -> if (selected) IncommColors.orphanedRowBgSelected else IncommColors.orphanedRowBg
+            else -> null
+        }
+        panel.background = stateBg
+            ?: if (selected) UIUtil.getListSelectionBackground(focused) else UIUtil.getListBackground()
 
-        val mainAttr = if (selected) {
+        // On a tinted state background keep the standard readable foreground
+        // instead of the (often white) selection foreground.
+        val useSelectionFg = selected && stateBg == null
+        val mainAttr = if (useSelectionFg) {
             SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, UIUtil.getListSelectionForeground(focused))
         } else {
             SimpleTextAttributes.REGULAR_ATTRIBUTES
         }
-        val subAttr = if (selected) {
+        val subAttr = if (useSelectionFg) {
             SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, UIUtil.getListSelectionForeground(focused))
         } else {
             SimpleTextAttributes.GRAYED_ATTRIBUTES
@@ -59,10 +72,12 @@ class NoteListCellRenderer : ListCellRenderer<Note> {
 
         top.icon = NoteGutterIconRenderer.iconFor(note)
         top.append(oneLine(note.content), mainAttr)
-        when {
-            note.orphaned -> top.append("  unanchored", if (selected) subAttr else SimpleTextAttributes.ERROR_ATTRIBUTES)
-            note.resolved -> top.append("  \u2713 resolved", subAttr)
+        // Show every applicable state side by side, e.g. "resolved | orphaned".
+        val states = buildList {
+            if (note.resolved) add("\u2713 resolved")
+            if (note.orphaned) add("orphaned")
         }
+        if (states.isNotEmpty()) top.append("  " + states.joinToString(" | "), subAttr)
 
         val replies = when (val n = note.replies.size) {
             0 -> ""

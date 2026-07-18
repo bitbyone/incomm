@@ -65,7 +65,7 @@ const skillMarkdown = `---
 name: incomm
 description: >-
   Read and answer inline, line-anchored code-review comments a human left in the
-  IntelliJ "incomm" plugin, and leave your own review remarks anchored to
+  incomm editor plugin, and leave your own review remarks anchored to
   specific lines of files. Use when the user mentions incomm or review comments,
   asks you to address review feedback, or when you review code and want to attach
   remarks to exact lines of specific files.
@@ -74,9 +74,9 @@ description: >-
 # incomm — inline code-review comments (agent skill)
 
 incomm is a command-line tool that reads and writes ` + "`" + `<project-root>/.incomm/notes.json` + "`" + `.
-A human attaches comments to specific lines of files inside the IntelliJ IDE. You,
+A human attaches comments to specific lines of files inside their editor. You,
 the AI agent, use the incomm CLI to read those comments, do the work, and reply —
-your reply shows up inline in the IDE, right under the referenced line. You can also
+your reply shows up inline in the editor, right under the referenced line. You can also
 leave your OWN comments on specific lines while reviewing code.
 
 This is the primary way to communicate concrete answers and requests with the human
@@ -108,7 +108,7 @@ incomm show <id> --json
 
 3. Do the actual work in the code.
 
-4. Reply. Your reply appears inline in the IDE at that line:
+4. Reply. Your reply appears inline in the editor at that line:
 
 ~~~bash
 incomm reply <id> --content "Fixed: now streams the file instead of buffering it."
@@ -123,7 +123,7 @@ incomm resolve <id>
 ### B. Leave your own review remarks (a new comment on specific lines)
 
 While reviewing, attach a remark to the exact line or line range so the human sees it
-in the IDE at that spot:
+in the editor at that spot:
 
 ~~~bash
 # a single line
@@ -149,7 +149,41 @@ incomm unresolve <id>                                reopen a resolved comment
 incomm rm <id>                                       delete one comment
 incomm clear                                         delete ALL comments
 incomm reanchor [--file F]                           recompute line positions after edits
+incomm anchor get <id> [--json]                      show a comment's position + anchor fields
+incomm anchor set <id> [--line N|N:M] [field flags]  set final position / edit anchor fields
+incomm anchor recompute [--id X] [--file F]          refresh anchor text at current lines
 ~~~
+
+## Fixing positions when auto-reanchor fails
+
+After you edit files, stored line numbers self-heal: ` + "`" + `incomm reanchor` + "`" + ` (and ` + "`" + `incomm list` + "`" + `,
+which reanchors first) re-find each comment by its stored anchor text. The editor
+plugin does the same automatically and live as the file changes.
+
+If the heuristic can't place a comment it is marked ` + "`" + `orphaned` + "`" + ` (its anchor text was
+lost after edits). Because YOU made the edits, you often know exactly where the comment
+should now live. Use the low-level ` + "`" + `anchor` + "`" + ` API to fix it directly:
+
+~~~bash
+# inspect the current stored position + anchor fields
+incomm anchor get <id> --json
+
+# you know the code the comment referred to now sits at line 88 — move it there.
+# this recomputes the anchor text from the file at line 88 and clears "orphaned":
+incomm anchor set <id> --line 88
+
+# a range, and/or override individual anchor fields verbatim:
+incomm anchor set <id> --line 88:94
+incomm anchor set <id> --start-prefix "func handle(" --context-before "" --checksum ""
+
+# after manually setting many positions, refresh their anchor text from the file:
+incomm anchor recompute --file src/app/main.go
+~~~
+
+- ` + "`" + `anchor set --line N` + "`" + ` moves the comment and (by default) regenerates its anchor from the
+  file at that line, un-orphaning it. Add ` + "`" + `--no-recompute` + "`" + ` to change only the line numbers.
+- Field flags (` + "`" + `--start-prefix` + "`" + `, ` + "`" + `--end-prefix` + "`" + `, ` + "`" + `--context-before` + "`" + `, ` + "`" + `--context-after` + "`" + `,
+  ` + "`" + `--checksum` + "`" + `) overwrite exactly that anchor field; ` + "`" + `--orphaned` + "`" + ` sets the flag explicitly.
 
 ## Rules and tips
 
@@ -159,8 +193,9 @@ incomm reanchor [--file F]                           recompute line positions af
 - Only resolve a comment you actually addressed. If you could not, reply explaining why
   and leave it unresolved.
 - ids are short hex strings, e.g. 3f9a2b17. Copy them from ` + "`" + `list` + "`" + ` / ` + "`" + `add` + "`" + ` / ` + "`" + `show` + "`" + ` output.
-- If a comment is reported as orphaned / unanchored, its anchor text was lost after edits.
-  Run ` + "`" + `incomm show <id>` + "`" + `, re-check the surrounding code, then re-anchor or re-add as needed.
+- If a comment is reported as orphaned, its anchor text was lost after edits. Don't re-add
+  a duplicate — use ` + "`" + `incomm anchor set <id> --line N` + "`" + ` to place it where the code moved to
+  (see "Fixing positions when auto-reanchor fails" above).
 - Paths stored in notes are project-root-relative and use forward slashes.
 
 ## JSON output shapes (for parsing)
@@ -179,6 +214,13 @@ incomm reanchor [--file F]                           recompute line positions af
   "file": "src/app/main.go",
   "startLine": 42,
   "endLine": 42,
+  "anchor": {
+    "startPrefix": "func handle(ctx co",
+    "endPrefix": "func handle(ctx co",
+    "contextBefore": "// entrypoint",
+    "contextAfter": "return nil",
+    "checksum": "sha1:9ab34f…"
+  },
   "content": "the comment text",
   "resolved": false,
   "orphaned": false,
@@ -190,4 +232,10 @@ incomm reanchor [--file F]                           recompute line positions af
   ]
 }
 ~~~
+
+The ` + "`" + `anchor` + "`" + ` object is how a comment re-finds its line after the file changes:
+` + "`" + `startPrefix` + "`" + `/` + "`" + `endPrefix` + "`" + ` are the trimmed text of the first/last anchored line,
+` + "`" + `contextBefore` + "`" + `/` + "`" + `contextAfter` + "`" + ` the trimmed lines just outside the range, and
+` + "`" + `checksum` + "`" + ` a hash of the exact block. ` + "`" + `incomm anchor get <id> --json` + "`" + ` returns just the
+position + this object; the ` + "`" + `anchor set` + "`" + ` field flags edit these values directly.
 `

@@ -20,6 +20,7 @@ import dev.incomm.model.Note
 import dev.incomm.store.NotesService
 import java.awt.BorderLayout
 import java.awt.Dimension
+import java.awt.FlowLayout
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import javax.swing.DefaultListModel
@@ -50,6 +51,11 @@ object NotesExplorerPopup {
             cellRenderer = NoteListCellRenderer()
         }
         val search = SearchTextField(false)
+        val orphanedFilter = JBCheckBox("Include orphaned", true).apply {
+            isOpaque = false
+            toolTipText = "Show orphaned comments (${if (SystemInfo.isMac) "\u2318O" else "Ctrl+O"})"
+            border = JBUI.Borders.emptyLeft(8)
+        }
         val resolvedFilter = JBCheckBox("Include resolved", false).apply {
             isOpaque = false
             toolTipText = "Show resolved comments too (${if (SystemInfo.isMac) "\u2318R" else "Ctrl+R"})"
@@ -71,8 +77,10 @@ object NotesExplorerPopup {
             val query = search.text.trim()
             val matcher = if (query.isEmpty()) null else NameUtil.buildMatcher("*$query").build()
             val includeResolved = resolvedFilter.isSelected
+            val includeOrphaned = orphanedFilter.isSelected
             val items = service.allNotes()
                 .filter { includeResolved || !it.resolved }
+                .filter { includeOrphaned || !it.orphaned }
                 .filter { matcher == null || matcher.matches(searchableText(it)) }
                 .sortedWith(compareBy({ it.file }, { it.startLine }))
             model.clear()
@@ -119,11 +127,16 @@ object NotesExplorerPopup {
             preferredSize = Dimension(960, 560)
         }
 
-        // Search-Everywhere-style header: the search field with the resolved
-        // filter on the right.
+        // Search-Everywhere-style header: the search field with the orphaned and
+        // resolved filters on the right.
+        val filters = JPanel(FlowLayout(FlowLayout.RIGHT, 0, 0)).apply {
+            isOpaque = false
+            add(orphanedFilter)
+            add(resolvedFilter)
+        }
         val header = JPanel(BorderLayout()).apply {
             add(search, BorderLayout.CENTER)
-            add(resolvedFilter, BorderLayout.EAST)
+            add(filters, BorderLayout.EAST)
             border = JBUI.Borders.compound(
                 JBUI.Borders.customLine(JBColor.border(), 0, 0, 1, 0),
                 JBUI.Borders.empty(2, 4, 2, 6),
@@ -158,11 +171,19 @@ object NotesExplorerPopup {
 
         list.addListSelectionListener { showDetail() }
         resolvedFilter.addActionListener { reload(selected()?.id) }
+        orphanedFilter.addActionListener { reload(selected()?.id) }
         // Cmd+R (Ctrl+R off macOS) toggles the resolved filter from anywhere in the popup.
         object : DumbAwareAction() {
             override fun actionPerformed(e: AnActionEvent) = resolvedFilter.doClick()
         }.registerCustomShortcutSet(
             CustomShortcutSet.fromString(if (SystemInfo.isMac) "meta R" else "control R"),
+            root,
+        )
+        // Cmd+O (Ctrl+O off macOS) toggles the orphaned filter from anywhere in the popup.
+        object : DumbAwareAction() {
+            override fun actionPerformed(e: AnActionEvent) = orphanedFilter.doClick()
+        }.registerCustomShortcutSet(
+            CustomShortcutSet.fromString(if (SystemInfo.isMac) "meta O" else "control O"),
             root,
         )
         search.addDocumentListener(object : DocumentListener {
@@ -212,7 +233,7 @@ object NotesExplorerPopup {
     }
 
     private fun hintBar(): JComponent =
-        JBLabel("<html><small>&nbsp;\u2191\u2193 navigate &nbsp;\u00B7&nbsp; \u23CE open &nbsp;\u00B7&nbsp; type to filter &nbsp;\u00B7&nbsp; \u2318R/Ctrl+R resolved</small></html>")
+        JBLabel("<html><small>&nbsp;\u2191\u2193 navigate &nbsp;\u00B7&nbsp; \u23CE open &nbsp;\u00B7&nbsp; type to filter &nbsp;\u00B7&nbsp; \u2318O/Ctrl+O orphaned &nbsp;\u00B7&nbsp; \u2318R/Ctrl+R resolved</small></html>")
             .apply { border = JBUI.Borders.empty(3, 6) }
 
     private fun searchableText(note: Note): String =

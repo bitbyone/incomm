@@ -104,6 +104,16 @@ class NoteCardComponent(
         rebuild()
     }
 
+    /**
+     * Refresh only the location header (e.g. `L70` → `L72`) in place, without
+     * rebuilding the card — used when live re-anchoring moves the note as the
+     * user edits above it, so the header keeps up without disturbing the viewport.
+     */
+    fun refreshLocation() {
+        val note = NotesService.getInstance(project).find(noteId) ?: return
+        titleLabel.text = titleHtml(note)
+    }
+
     private fun rebuildFor(note: Note) {
         focusAfterBuild = null
 
@@ -135,11 +145,11 @@ class NoteCardComponent(
     private fun titleHtml(note: Note): String {
         val range = if (note.endLine != note.startLine) "${note.startLine}\u2013${note.endLine}" else "${note.startLine}"
         val state = when {
-            note.orphaned -> "unanchored"
+            note.orphaned -> "orphaned"
             note.resolved -> "resolved"
             else -> "open"
         }
-        return "<html><b>L$range</b>&nbsp;&nbsp;<font color='#8A8A8A'>$state</font></html>"
+        return "<html><b>L$range</b>&nbsp;&nbsp;<font color='${ThreadUi.hex(IncommColors.muted)}'>$state</font></html>"
     }
 
     private fun buildToolbar(note: Note) {

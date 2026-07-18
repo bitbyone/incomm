@@ -50,7 +50,7 @@ class NoteGutterIconRenderer(
 
         fun tooltipFor(note: Note): String {
             val state = when {
-                note.orphaned -> " (unanchored)"
+                note.orphaned -> " (orphaned)"
                 note.resolved -> " (resolved)"
                 else -> ""
             }

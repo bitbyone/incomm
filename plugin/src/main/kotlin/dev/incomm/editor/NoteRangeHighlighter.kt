@@ -10,10 +10,11 @@ import com.intellij.openapi.editor.markup.LineMarkerRendererEx
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
-import com.intellij.ui.JBColor
+import com.intellij.ui.ColorUtil
 import com.intellij.util.ui.JBUI
 import dev.incomm.model.Note
 import dev.incomm.store.NotesService
+import dev.incomm.ui.IncommColors
 import java.awt.Color
 import java.awt.Graphics
 import java.awt.Graphics2D
@@ -89,7 +90,8 @@ class NoteRangeHighlighter(
     private fun noteAt(line1: Int): Note? {
         if (line1 < 1) return null
         return NotesService.getInstance(project).notesForFile(rel)
-            .firstOrNull { line1 in it.startLine..it.endLine }
+            .filterNot { it.isHiddenInEditor() }
+            .firstOrNull { line1 in it.displayStartLine()..it.displayEndLine() }
     }
 
     // ---- gutter band -------------------------------------------------------
@@ -97,8 +99,8 @@ class NoteRangeHighlighter(
     private fun addBand(note: Note): RangeHighlighter {
         val doc = editor.document
         val last = (doc.lineCount - 1).coerceAtLeast(0)
-        val start0 = (note.startLine - 1).coerceIn(0, last)
-        val end0 = (note.endLine - 1).coerceIn(start0, last)
+        val start0 = (note.displayStartLine() - 1).coerceIn(0, last)
+        val end0 = (note.displayEndLine() - 1).coerceIn(start0, last)
         val hl = editor.markupModel.addRangeHighlighter(
             doc.getLineStartOffset(start0),
             doc.getLineEndOffset(end0),
@@ -126,7 +128,7 @@ class NoteRangeHighlighter(
         override fun paint(editor: Editor, g: Graphics, r: Rectangle) {
             val g2 = g.create() as Graphics2D
             try {
-                g2.color = Color(accent.red, accent.green, accent.blue, 46)
+                g2.color = ColorUtil.withAlpha(accent, 0.18)
                 g2.fillRect(r.x, r.y, r.width, r.height)
                 g2.color = accent
                 g2.fillRect(r.x, r.y, JBUI.scale(3), r.height)
@@ -139,10 +141,10 @@ class NoteRangeHighlighter(
     }
 
     private companion object {
-        private fun bandColor(note: Note): JBColor = when {
-            note.orphaned -> JBColor(0xE5A700, 0xB08400)
-            note.resolved -> JBColor(0x59A869, 0x4C8A5A)
-            else -> JBColor(0x6C9FF0, 0x3B5680)
+        private fun bandColor(note: Note): Color = when {
+            note.orphaned -> IncommColors.stateOrphaned
+            note.resolved -> IncommColors.stateResolved
+            else -> IncommColors.stateOpen
         }
     }
 }

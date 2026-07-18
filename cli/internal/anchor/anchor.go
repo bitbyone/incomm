@@ -1,5 +1,6 @@
 // Package anchor implements the shared, deterministic line-anchoring algorithm
-// specified in SCHEMA.md. The Kotlin plugin mirrors this logic exactly.
+// specified in README.md (the "Data format & anchoring specification" chapter).
+// The Kotlin plugin mirrors this logic exactly.
 package anchor
 
 import (
@@ -10,7 +11,7 @@ import (
 	"incomm/internal/model"
 )
 
-// Tunables — MUST match SCHEMA.md and the Kotlin implementation.
+// Tunables — MUST match the README spec and the Kotlin implementation.
 const (
 	PrefixLen        = 64  // max chars kept for start/end prefixes
 	ContextPrefixLen = 48  // max chars kept for context-before/after
@@ -94,7 +95,7 @@ func Compute(lines []string, startLine, endLine int) model.Anchor {
 // Reanchor recomputes n.StartLine/EndLine against the current file lines,
 // updating n.Anchor and n.Orphaned. It reports whether the note changed.
 //
-// The algorithm is specified in SCHEMA.md. It preserves the note's line span
+// The algorithm is specified in README.md. It preserves the note's line span
 // (endLine-startLine) and does a best-effort search using the stored prefixes,
 // context lines and (optionally) checksum.
 func Reanchor(n *model.Note, lines []string) bool {

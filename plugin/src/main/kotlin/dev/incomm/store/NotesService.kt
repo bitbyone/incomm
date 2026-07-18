@@ -1,6 +1,7 @@
 package dev.incomm.store
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
@@ -26,6 +27,13 @@ class NotesService(private val project: Project) : Disposable {
 
     private val lock = Any()
     private var model: NotesFile = NotesFile()
+
+    /**
+     * Ids of notes deleted locally but whose deletion may not have hit disk yet.
+     * The merge-on-write step consults this so a note the user just deleted is
+     * not resurrected from the still-current on-disk copy. Guarded by [lock].
+     */
+    private val locallyDeleted = HashSet<String>()
 
     private val writeExecutor =
         AppExecutorUtil.createBoundedApplicationPoolExecutor("incomm-notes-writer", 1)
@@ -79,6 +87,8 @@ class NotesService(private val project: Project) : Disposable {
         // disk already matches memory — e.g. the reload triggered by our own
         // atomic write. This avoids redundant, viewport-disturbing refreshes.
         val changed = synchronized(lock) {
+            // Don't resurrect notes we've deleted locally but not yet flushed.
+            if (locallyDeleted.isNotEmpty()) loaded.notes.removeAll { it.id in locallyDeleted }
             if (model == loaded) false else { model = loaded; true }
         }
         if (publish && changed) publishChanged()
@@ -200,7 +210,9 @@ class NotesService(private val project: Project) : Disposable {
     }
 
     fun removeNote(id: String): Boolean {
-        val removed = synchronized(lock) { model.remove(id) }
+        val removed = synchronized(lock) {
+            if (model.remove(id)) { locallyDeleted.add(id); true } else false
+        }
         if (removed) persistAndNotify()
         return removed
     }
@@ -208,9 +220,10 @@ class NotesService(private val project: Project) : Disposable {
     /** Delete every note for one file (rel path). Returns how many were removed. */
     fun removeNotesForFile(rel: String): Int {
         val removed = synchronized(lock) {
-            val before = model.notes.size
+            val gone = model.notes.filter { it.file == rel }.map { it.id }
             model.notes.removeAll { it.file == rel }
-            before - model.notes.size
+            locallyDeleted.addAll(gone)
+            gone.size
         }
         if (removed > 0) persistAndNotify()
         return removed
@@ -295,29 +308,62 @@ class NotesService(private val project: Project) : Disposable {
 
     // ---- persistence -------------------------------------------------------
 
-    private fun persistAndNotify() {
-        val snapshot = synchronized(lock) { model.deepCopy() }
-        publishChanged()
-        writeSnapshot(snapshot)
-    }
+    private fun persistAndNotify() = persist(notify = true)
 
     /**
-     * Persist to disk without notifying listeners (no UI rebuild). Used for
-     * live position tracking, where the editor already renders correctly and a
-     * rebuild would only disturb the viewport. The CLI still sees the update.
+     * Persist without an immediate notification (no UI rebuild). Used for live
+     * position tracking, where the editor already renders correctly and a rebuild
+     * would only disturb the viewport. The CLI still sees the update. If the
+     * merge below discovers notes added externally, a refresh is published anyway.
      */
-    private fun persistQuietly() {
-        val snapshot = synchronized(lock) { model.deepCopy() }
-        writeSnapshot(snapshot)
-    }
+    private fun persistQuietly() = persist(notify = false)
 
-    private fun writeSnapshot(snapshot: NotesFile) {
+    /**
+     * Merge-on-write persistence. On the writer thread we first load the **current**
+     * `notes.json` and fold in any notes it contains that our in-memory model does
+     * not yet know about — i.e. comments the agent/CLI added concurrently — before
+     * saving. This guarantees a plugin write never clobbers the agent's notes
+     * (the previous "serialize the whole model over the file" behaviour deleted
+     * them). Newly discovered external notes also trigger a refresh so they appear.
+     */
+    private fun persist(notify: Boolean) {
+        if (notify) publishChanged() // immediate UI for the local change
         val store = storeOrNull() ?: return
         writeExecutor.execute {
+            val disk = try {
+                store.load()
+            } catch (e: Exception) {
+                thisLogger().warn("incomm: load-for-merge failed", e)
+                null
+            }
+            var externalAppeared = false
+            val handledDeletes: Set<String>
+            val merged = synchronized(lock) {
+                if (disk != null) {
+                    val known = model.notes.mapTo(HashSet()) { it.id }
+                    // Fold in notes another writer (the agent) added, but never a
+                    // note we deleted locally that just hasn't been flushed yet.
+                    val extras = disk.notes.filter { it.id !in known && it.id !in locallyDeleted }
+                    if (extras.isNotEmpty()) {
+                        model.notes.addAll(extras.map { it.deepCopy() })
+                        externalAppeared = true
+                    }
+                }
+                handledDeletes = HashSet(locallyDeleted)
+                model.deepCopy()
+            }
             try {
-                store.save(snapshot)
+                store.save(merged)
             } catch (e: Exception) {
                 thisLogger().warn("incomm: save failed", e)
+            }
+            // Those deletions are now on disk (merged omits them); stop guarding them.
+            synchronized(lock) { locallyDeleted.removeAll(handledDeletes) }
+            if (externalAppeared && !notify) {
+                ApplicationManager.getApplication().invokeLater(
+                    { if (!project.isDisposed) publishChanged() },
+                    project.disposed,
+                )
             }
         }
     }

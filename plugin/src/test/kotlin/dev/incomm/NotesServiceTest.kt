@@ -3,6 +3,8 @@ package dev.incomm
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import dev.incomm.model.AUTHOR_AGENT
 import dev.incomm.model.AUTHOR_USER
+import dev.incomm.model.Note
+import dev.incomm.model.nowUtc
 import dev.incomm.store.NotesService
 import dev.incomm.store.NotesStore
 import java.nio.file.Paths
@@ -12,6 +14,16 @@ import java.nio.file.Paths
  * in-memory model, mutations, and disk persistence) in a headless IDE.
  */
 class NotesServiceTest : BasePlatformTestCase() {
+
+    override fun setUp() {
+        super.setUp()
+        // The light project (and its on-disk notes.json) is reused across test
+        // methods; start each test from a clean slate. Merge-on-write persistence
+        // would otherwise fold a previous test's leftover notes back in.
+        val service = NotesService.getInstance(project)
+        service.clearAll()
+        service.flushWrites()
+    }
 
     fun testAddResolveReplyRemoveInMemory() {
         val service = NotesService.getInstance(project)
@@ -98,6 +110,64 @@ class NotesServiceTest : BasePlatformTestCase() {
         assertEquals("hello", reloaded.notes[0].content)
 
         // clean up disk artifact so it doesn't leak between tests
+        service.clearAll()
+        service.flushWrites()
+    }
+
+    /**
+     * Critical: a plugin write must NOT clobber notes the agent added to
+     * notes.json externally (previously the whole in-memory model was written
+     * over the file, deleting agent comments). Merge-on-write must preserve them.
+     */
+    fun testExternalAgentNoteSurvivesPluginWrite() {
+        val base = project.basePath ?: return
+        val service = NotesService.getInstance(project)
+        val store = NotesStore(Paths.get(base))
+
+        val userNote = service.addNote("app.txt", 1, 1, "user comment", AUTHOR_USER, listOf("code"))
+        service.flushWrites()
+
+        // Agent writes a brand-new note straight to notes.json; plugin is unaware.
+        val onDisk = store.load()
+        onDisk.notes.add(
+            Note(
+                id = "agent0001", file = "app.txt", startLine = 2, endLine = 2,
+                content = "agent comment", author = AUTHOR_AGENT,
+                createdAt = nowUtc(), updatedAt = nowUtc(),
+            ),
+        )
+        store.save(onDisk)
+
+        // Plugin writes again WITHOUT reloading — must merge, not clobber.
+        service.setResolved(userNote.id, true)
+        service.flushWrites()
+
+        val reloaded = store.load()
+        val ids = reloaded.notes.map { it.id }.toSet()
+        assertTrue("user note kept", userNote.id in ids)
+        assertTrue("agent note preserved", "agent0001" in ids)
+        assertEquals(2, reloaded.notes.size)
+
+        service.clearAll()
+        service.flushWrites()
+    }
+
+    /** A note deleted in the plugin must not be resurrected by merge-on-write. */
+    fun testLocalDeleteNotResurrected() {
+        val base = project.basePath ?: return
+        val service = NotesService.getInstance(project)
+        val store = NotesStore(Paths.get(base))
+
+        val note = service.addNote("d.txt", 1, 1, "temp", AUTHOR_USER, listOf("x"))
+        service.flushWrites()
+        assertEquals(1, store.load().notes.size)
+
+        assertTrue(service.removeNote(note.id))
+        service.flushWrites()
+
+        assertTrue("deleted note stays deleted on disk", store.load().notes.isEmpty())
+        assertTrue(service.isEmpty())
+
         service.clearAll()
         service.flushWrites()
     }

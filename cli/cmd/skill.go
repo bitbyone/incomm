@@ -97,7 +97,8 @@ line by line, anchored to real code, instead of only in chat.
 - The ` + "`" + `--author` + "`" + ` flag defaults to ` + "`" + `agent` + "`" + ` (that is you) for ` + "`" + `add` + "`" + ` and ` + "`" + `reply` + "`" + `.
   Comments written by the human have author ` + "`" + `user` + "`" + `.
 - Use ` + "`" + `--author-title` + "`" + ` to identify yourself (e.g. ` + "`" + `--author-title "Opus 4.6"` + "`" + `).
-  The title is shown in the IDE as "Agent (Opus 4.6)".
+  The title is shown in the IDE as "Agent (Opus 4.6)". **Always include your
+  model name** so the human knows which agent wrote each comment.
 
 ## What you can do
 

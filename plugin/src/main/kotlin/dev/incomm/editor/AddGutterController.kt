@@ -104,7 +104,7 @@ class AddGutterController(
     }
 
     private fun isPlusCandidate(line1: Int): Boolean =
-        line1 in 1..editor.document.lineCount && !hasNote(line1)
+        line1 in 1..editor.document.lineCount
 
     private fun addPlus(line1: Int): RangeHighlighter {
         val doc = editor.document

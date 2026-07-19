@@ -11,7 +11,6 @@ import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.event.EditorFactoryEvent
 import com.intellij.openapi.editor.event.EditorFactoryListener
-import com.intellij.openapi.editor.ex.util.EditorScrollingPositionKeeper
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.HighlighterTargetArea
@@ -260,25 +259,36 @@ class IncommEditorTracker(private val project: Project) : Disposable {
     }
 
     private fun refreshAll() {
-        // Keep every visible editor's viewport fixed across the whole rebuild so
-        // only the rendered thread blocks move — the code never scrolls. Embedded
-        // components settle their height on a later layout pass, hence the second
-        // (invokeLater) restore.
-        val keepers = EditorFactory.getInstance().allEditors
+        // Preserve each editor's exact pixel scroll offset across the rebuild so
+        // the viewport doesn't move. We deliberately do NOT use a line-anchored
+        // EditorScrollingPositionKeeper here: it re-anchors to the caret/first
+        // visible line and was the cause of the post-save viewport jump. The
+        // editor is already where it should be — we just keep it there.
+        val editors = EditorFactory.getInstance().allEditors
             .filter { it.project == project && !it.isDisposed }
-            .map { EditorScrollingPositionKeeper(it).also { k -> k.savePosition() } }
+        val saved = editors.associateWith { it.scrollingModel.verticalScrollOffset }
 
         for ((document, entry) in entries) rebuild(document, entry)
         for (controller in editorControllers.values) controller.refresh()
         for (controller in inlayControllers.values) controller.refresh()
         for (controller in rangeControllers.values) controller.refresh()
 
-        for (k in keepers) k.restorePosition(false)
-        ApplicationManager.getApplication().invokeLater({
-            for (k in keepers) {
-                if (!project.isDisposed) k.restorePosition(false)
-                k.dispose()
+        fun restore() {
+            for ((ed, offset) in saved) {
+                if (ed.isDisposed) continue
+                val sm = ed.scrollingModel
+                if (sm.verticalScrollOffset == offset) continue
+                sm.disableAnimation()
+                try {
+                    sm.scrollVertically(offset)
+                } finally {
+                    sm.enableAnimation()
+                }
             }
+        }
+        restore()
+        ApplicationManager.getApplication().invokeLater({
+            if (!project.isDisposed) restore()
         }, ModalityState.any())
     }
 

@@ -11,7 +11,6 @@ import com.intellij.openapi.editor.Inlay
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.ex.EditorEx
-import com.intellij.openapi.editor.ex.util.EditorScrollingPositionKeeper
 import com.intellij.openapi.editor.impl.EditorEmbeddedComponentManager
 import com.intellij.openapi.fileTypes.FileTypes
 import com.intellij.openapi.project.DumbAwareAction
@@ -85,22 +84,35 @@ class NoteInlayController(
 
     private fun rebuild() = keepScroll { rebuildInlays() }
 
-    /** Keep the editor's viewport fixed while inlays are added/removed. */
+    /**
+     * Keep the editor's viewport exactly where it is while inlays are added or
+     * removed. We simply preserve the raw pixel scroll offset — the editor is
+     * already at the right position before the change, so we just don't let it
+     * move. (An `EditorScrollingPositionKeeper` anchors to a logical line/caret,
+     * which during compose is the *compose* editor's caret, not the note line —
+     * that mis-anchoring is what made the page jump, worse the deeper you were.)
+     */
     private fun keepScroll(block: () -> Unit) {
         if (editor.isDisposed) {
             block()
             return
         }
-        val keeper = EditorScrollingPositionKeeper(editor)
-        keeper.savePosition()
+        val sm = editor.scrollingModel
+        val saved = sm.verticalScrollOffset
         block()
-        keeper.restorePosition(false)
-        // Embedded components get their real height only after layout settles, so
-        // restore again once that happened, then drop the anchor.
-        ApplicationManager.getApplication().invokeLater({
-            if (!editor.isDisposed) keeper.restorePosition(false)
-            keeper.dispose()
-        }, ModalityState.any())
+        fun restore() {
+            if (editor.isDisposed || sm.verticalScrollOffset == saved) return
+            sm.disableAnimation()
+            try {
+                sm.scrollVertically(saved)
+            } finally {
+                sm.enableAnimation()
+            }
+        }
+        restore()
+        // Re-assert after the async layout settle (and after the notes-changed
+        // refresh runs), so nothing nudges the viewport away.
+        ApplicationManager.getApplication().invokeLater({ restore() }, ModalityState.any())
     }
 
     /**

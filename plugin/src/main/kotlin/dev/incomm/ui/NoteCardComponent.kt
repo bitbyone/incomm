@@ -46,6 +46,8 @@ class NoteCardComponent(
     private val noteId: String,
     private val onReply: () -> Unit,
     private val onResolve: (Boolean) -> Unit,
+    private val onDelete: () -> Unit = {},
+    private val onDeleteReply: (String) -> Unit = {},
     private val onHover: (Boolean) -> Unit,
     private val onContentResized: () -> Unit = {},
 ) : JPanel(BorderLayout()) {
@@ -162,7 +164,7 @@ class NoteCardComponent(
         }
         toolbar.add(ThreadUi.iconButton(IncommIcons.REPLY, "Reply") { onReply() })
         toolbar.add(ThreadUi.iconButton(IncommIcons.DELETE_COMMENT, "Delete thread") {
-            NotesService.getInstance(project).removeNote(noteId)
+            onDelete()
         })
         toolbar.revalidate()
         toolbar.repaint()
@@ -270,12 +272,8 @@ class NoteCardComponent(
     }
 
     private fun deleteMessage(key: String, replyId: String?) {
-        val service = NotesService.getInstance(project)
-        if (key == KEY_ORIGINAL) service.removeNote(noteId)
-        else if (replyId != null) {
-            service.removeReply(noteId, replyId)
-            rebuild()
-        }
+        if (key == KEY_ORIGINAL) onDelete()
+        else if (replyId != null) onDeleteReply(replyId)
     }
 
     // ---- hover -------------------------------------------------------------

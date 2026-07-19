@@ -202,6 +202,8 @@ class NoteInlayController(
             note.id,
             onReply = { startReply(note.id) },
             onResolve = { resolved -> resolveNote(note.id, resolved) },
+            onDelete = { deleteNote(note.id) },
+            onDeleteReply = { replyId -> deleteReply(note.id, replyId) },
             onHover = { hovered ->
                 IncommEditorTracker.getInstance(project)
                     .setHoveredNote(editor, if (hovered) note.id else null)
@@ -312,6 +314,37 @@ class NoteInlayController(
     /** Resolve/reopen a thread; resolving also collapses (hides) its card. */
     private fun resolveNote(noteId: String, resolved: Boolean) {
         IncommEditorTracker.getInstance(project).setNoteResolved(noteId, resolved)
+        updateCardInPlace(noteId)
+    }
+
+    /** Delete a whole thread, updating this editor in place (no full refresh). */
+    private fun deleteNote(noteId: String) {
+        NotesService.getInstance(project).removeNote(noteId)
+        updateCardInPlace(noteId)
+    }
+
+    /** Delete one reply, re-rendering its parent card in place (no full refresh). */
+    private fun deleteReply(noteId: String, replyId: String) {
+        NotesService.getInstance(project).removeReply(noteId, replyId)
+        updateCardInPlace(noteId)
+    }
+
+    /**
+     * Reconcile one note's card with the current model **in place**, exactly like
+     * add/reply: drop the old inlay and re-add the card if it should still show,
+     * inside a scroll-kept pass, and skip the redundant full rebuild the mutation
+     * published. Handles delete (note gone → card removed), resolve (card hidden →
+     * removed), reopen (shown → re-added) and reply-delete (re-rendered).
+     */
+    private fun updateCardInPlace(noteId: String) {
+        keepScroll {
+            skipNextRebuild = true
+            cards.remove(noteId)?.let { if (it.inlay.isValid) Disposer.dispose(it.inlay) }
+            val note = NotesService.getInstance(project).find(noteId) ?: return@keepScroll
+            if (note.file != rel || note.isHiddenInEditor()) return@keepScroll
+            if (IncommEditorTracker.getInstance(project).isNoteHidden(noteId)) return@keepScroll
+            addCard(note)
+        }
     }
 
     /** Begin editing a note's original comment in place, revealing its card first. */

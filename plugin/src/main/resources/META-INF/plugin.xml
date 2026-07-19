@@ -7,13 +7,16 @@
         <b>incomm</b> — inline code-review comments for AI agents.
         <br/>
         Attach comments to specific lines in any file. Comments are stored in
-        <code>&lt;project-root&gt;/.incomm/notes.json</code> and are meant to be
-        consumed and answered by an AI agent through the companion
-        <code>incomm</code> CLI. Agent replies appear inline, right at the line.
+        <code>&lt;project-root&gt;/.incomm/notes_&lt;branch&gt;.json</code>
+        (scoped to the current git branch) and are meant to be consumed and
+        answered by an AI agent through the companion <code>incomm</code> CLI.
+        Agent replies appear inline, right at the line.
     ]]></description>
 
     <!-- Platform-generic: works in all JetBrains IDEs. -->
     <depends>com.intellij.modules.platform</depends>
+    <!-- VCS API for branch-change detection (bundled in all JetBrains IDEs). -->
+    <depends>com.intellij.modules.vcs</depends>
 
     <resource-bundle>messages.IncommBundle</resource-bundle>
 
@@ -25,6 +28,7 @@
                                  id="dev.incomm.settings"
                                  displayName="Incomm"
                                  instance="dev.incomm.settings.IncommConfigurable"/>
+        <notificationGroup id="Incomm" displayType="BALLOON"/>
     </extensions>
 
     <projectListeners>
@@ -99,6 +103,11 @@
 
         <action id="incomm.Clear"
                 class="dev.incomm.actions.ClearAction">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+
+        <action id="incomm.Reload"
+                class="dev.incomm.actions.ReloadAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
     </actions>

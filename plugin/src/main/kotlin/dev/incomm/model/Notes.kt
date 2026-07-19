@@ -11,13 +11,14 @@ const val AUTHOR_USER = "user"
 const val AUTHOR_AGENT = "agent"
 
 /**
- * Root object of `.incomm/notes.json`.
+ * Root object of `.incomm/notes[_<branch>].json`.
  *
  * Fields are `var` with defaults because Gson populates them by reflection and
  * may leave absent fields null; [normalize] repairs such values after parsing.
  */
 data class NotesFile(
     var version: Int = SCHEMA_VERSION,
+    var branch: String? = null,
     var notes: MutableList<Note> = mutableListOf(),
 ) {
     fun normalize(): NotesFile {
@@ -34,7 +35,7 @@ data class NotesFile(
 
     /** Deep, independent copy safe to hand to a background writer. */
     fun deepCopy(): NotesFile =
-        NotesFile(version, notes.map { it.deepCopy() }.toMutableList())
+        NotesFile(version, branch, notes.map { it.deepCopy() }.toMutableList())
 }
 
 /** A single line-anchored comment thread. */
@@ -48,6 +49,7 @@ data class Note(
     var resolved: Boolean = false,
     var orphaned: Boolean = false,
     var author: String = AUTHOR_USER,
+    var authorTitle: String? = null,
     var createdAt: String = "",
     var updatedAt: String = "",
     var replies: MutableList<Reply> = mutableListOf(),
@@ -101,6 +103,7 @@ data class Anchor(
 data class Reply(
     var id: String = "",
     var author: String = AUTHOR_AGENT,
+    var authorTitle: String? = null,
     var content: String = "",
     var createdAt: String = "",
 )

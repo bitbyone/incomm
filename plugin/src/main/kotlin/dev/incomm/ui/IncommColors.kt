@@ -31,8 +31,13 @@ object IncommColors {
 
     fun themeUserBubbleBg(): Color = JBUI.CurrentTheme.Banner.INFO_BACKGROUND
     fun themeAgentBubbleBg(): Color = JBUI.CurrentTheme.Banner.SUCCESS_BACKGROUND
-    fun themeUserName(): Color = JBUI.CurrentTheme.Banner.INFO_BORDER_COLOR
-    fun themeAgentName(): Color = JBUI.CurrentTheme.Banner.SUCCESS_BORDER_COLOR
+    fun themeUserName(): Color = JBUI.CurrentTheme.Link.Foreground.ENABLED
+    fun themeAgentName(): Color {
+        // SUCCESS_BORDER_COLOR can be low-contrast on the success background in
+        // dark themes. Mix toward the label foreground for reliable readability.
+        val base = JBUI.CurrentTheme.Banner.SUCCESS_BORDER_COLOR
+        return ColorUtil.mix(base, UIUtil.getLabelForeground(), 0.45)
+    }
     fun themeCommentFg(): Color = UIUtil.getLabelForeground()
     fun themeStatusFg(): Color = UIUtil.getContextHelpForeground()
 

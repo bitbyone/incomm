@@ -1,4 +1,4 @@
-// Package store locates the project root and reads/writes .incomm/notes.json.
+// Package store locates the project root and reads/writes .incomm/notes[_<branch>].json.
 package store
 
 import (
@@ -9,18 +9,22 @@ import (
 	"path/filepath"
 	"strings"
 
+	"incomm/internal/git"
 	"incomm/internal/model"
 )
 
 // DirName is the directory holding incomm state, at the project root.
 const DirName = ".incomm"
 
-// FileName is the notes file inside DirName.
+// FileName is the default notes file inside DirName (used when no git branch
+// is detected or the repo is in detached-HEAD state).
 const FileName = "notes.json"
 
-// Store is bound to a resolved project root.
+// Store is bound to a resolved project root and an optional git branch.
 type Store struct {
-	Root string // absolute path of the directory that holds (or will hold) .incomm/
+	Root      string // absolute path of the directory that holds (or will hold) .incomm/
+	RawBranch string // raw git branch name (e.g. "feature/thing"); written into JSON
+	Branch    string // sanitized for filename (e.g. "feature_thing"); empty = legacy notes.json
 }
 
 // Open resolves the project root and returns a Store.
@@ -30,7 +34,12 @@ type Store struct {
 // tree looking for an existing .incomm/ directory and, if found, roots the
 // store there. If none is found, the starting directory becomes the root and
 // .incomm/ will be created on the first Save.
-func Open(explicitRoot string) (*Store, error) {
+//
+// If explicitBranch is non-empty it is used as the branch name (sanitized for
+// filenames). Otherwise the branch is auto-detected by reading .git/HEAD. If
+// git is unavailable or the repo is in detached-HEAD state, Branch stays empty
+// and the legacy notes.json is used.
+func Open(explicitRoot, explicitBranch string) (*Store, error) {
 	base := explicitRoot
 	if base == "" {
 		wd, err := os.Getwd()
@@ -43,10 +52,19 @@ func Open(explicitRoot string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve %q: %w", base, err)
 	}
-	if root, ok := findExisting(abs); ok {
-		return &Store{Root: root}, nil
+	root := abs
+	if found, ok := findExisting(abs); ok {
+		root = found
 	}
-	return &Store{Root: abs}, nil
+	rawBranch := explicitBranch
+	if rawBranch == "" {
+		rawBranch = git.DetectBranch(root)
+	}
+	branch := ""
+	if rawBranch != "" {
+		branch = git.SanitizeBranch(rawBranch)
+	}
+	return &Store{Root: root, RawBranch: rawBranch, Branch: branch}, nil
 }
 
 // findExisting walks up from dir looking for a directory containing .incomm/.
@@ -67,10 +85,20 @@ func findExisting(dir string) (string, bool) {
 // Dir returns the absolute path of the .incomm/ directory.
 func (s *Store) Dir() string { return filepath.Join(s.Root, DirName) }
 
-// NotesPath returns the absolute path of notes.json.
-func (s *Store) NotesPath() string { return filepath.Join(s.Dir(), FileName) }
+// NotesFileName returns the filename for the current branch. With a branch
+// it is "notes_<branch>.json"; without one it is the legacy "notes.json".
+func (s *Store) NotesFileName() string {
+	if s.Branch == "" {
+		return FileName
+	}
+	return "notes_" + s.Branch + ".json"
+}
 
-// Load reads notes.json. A missing file yields an empty, normalized NotesFile.
+// NotesPath returns the absolute path of the branch-scoped notes file.
+func (s *Store) NotesPath() string { return filepath.Join(s.Dir(), s.NotesFileName()) }
+
+// Load reads the branch-scoped notes file. A missing file yields an empty,
+// normalized NotesFile.
 func (s *Store) Load() (*model.NotesFile, error) {
 	data, err := os.ReadFile(s.NotesPath())
 	if errors.Is(err, os.ErrNotExist) {
@@ -87,8 +115,12 @@ func (s *Store) Load() (*model.NotesFile, error) {
 	return &f, nil
 }
 
-// Save writes notes.json atomically (temp file + rename) with 2-space indent.
+// Save writes the branch-scoped notes file atomically (temp file + rename) with
+// 2-space indent. The raw branch name is stamped into the JSON.
 func (s *Store) Save(f *model.NotesFile) error {
+	if s.RawBranch != "" {
+		f.Branch = s.RawBranch
+	}
 	f.Normalize()
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
@@ -118,13 +150,13 @@ func (s *Store) Save(f *model.NotesFile) error {
 		return fmt.Errorf("close temp file: %w", err)
 	}
 	if err := os.Rename(tmpName, s.NotesPath()); err != nil {
-		return fmt.Errorf("replace notes.json: %w", err)
+		return fmt.Errorf("replace %s: %w", s.NotesFileName(), err)
 	}
 	return nil
 }
 
-// Clear deletes notes.json. It reports whether the file existed. The .incomm/
-// directory is removed too if it becomes empty.
+// Clear deletes the branch-scoped notes file. It reports whether the file
+// existed. The .incomm/ directory is removed too if it becomes empty.
 func (s *Store) Clear() (bool, error) {
 	err := os.Remove(s.NotesPath())
 	if errors.Is(err, os.ErrNotExist) {
@@ -141,7 +173,7 @@ func (s *Store) Clear() (bool, error) {
 }
 
 // RelFile converts a user-provided file path (absolute or relative to CWD) to a
-// project-root-relative path using POSIX separators, as stored in notes.json.
+// project-root-relative path using POSIX separators, as stored in the notes file.
 func (s *Store) RelFile(path string) (string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {

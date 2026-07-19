@@ -17,26 +17,28 @@ const (
 	AuthorAgent = "agent"
 )
 
-// NotesFile is the root object of .incomm/notes.json.
+// NotesFile is the root object of .incomm/notes[_<branch>].json.
 type NotesFile struct {
 	Version int    `json:"version"`
+	Branch  string `json:"branch,omitempty"` // raw git branch name (authoritative)
 	Notes   []Note `json:"notes"`
 }
 
 // Note is a single line-anchored comment thread.
 type Note struct {
-	ID        string  `json:"id"`
-	File      string  `json:"file"`      // project-root-relative, POSIX separators
-	StartLine int     `json:"startLine"` // 1-based, inclusive
-	EndLine   int     `json:"endLine"`   // 1-based, inclusive
-	Anchor    Anchor  `json:"anchor"`
-	Content   string  `json:"content"`
-	Resolved  bool    `json:"resolved"`
-	Orphaned  bool    `json:"orphaned"`
-	Author    string  `json:"author"`
-	CreatedAt string  `json:"createdAt"`
-	UpdatedAt string  `json:"updatedAt"`
-	Replies   []Reply `json:"replies"`
+	ID          string  `json:"id"`
+	File        string  `json:"file"`                  // project-root-relative, POSIX separators
+	StartLine   int     `json:"startLine"`             // 1-based, inclusive
+	EndLine     int     `json:"endLine"`               // 1-based, inclusive
+	Anchor      Anchor  `json:"anchor"`
+	Content     string  `json:"content"`
+	Resolved    bool    `json:"resolved"`
+	Orphaned    bool    `json:"orphaned"`
+	Author      string  `json:"author"`
+	AuthorTitle string  `json:"authorTitle,omitempty"` // display name (e.g. git user.name or model name)
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
+	Replies     []Reply `json:"replies"`
 }
 
 // Anchor holds the best-effort textual anchor used to re-find a note's line
@@ -51,10 +53,11 @@ type Anchor struct {
 
 // Reply is a single response in a note's thread.
 type Reply struct {
-	ID        string `json:"id"`
-	Author    string `json:"author"`
-	Content   string `json:"content"`
-	CreatedAt string `json:"createdAt"`
+	ID          string `json:"id"`
+	Author      string `json:"author"`
+	AuthorTitle string `json:"authorTitle,omitempty"` // display name
+	Content     string `json:"content"`
+	CreatedAt   string `json:"createdAt"`
 }
 
 // NewNotesFile returns an empty, versioned notes file.

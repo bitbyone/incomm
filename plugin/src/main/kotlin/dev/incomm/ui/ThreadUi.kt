@@ -66,9 +66,9 @@ object ThreadUi {
     }
 
     /** Coloured author name plus a muted subtitle (timestamp / location). */
-    fun authorLabel(author: String, subtitle: String): JBLabel =
+    fun authorLabel(author: String, subtitle: String, authorTitle: String? = null): JBLabel =
         JBLabel(
-            "<html><b><font color='${hex(accent(author))}'>${escape(label(author))}</font></b>" +
+            "<html><b><font color='${hex(accent(author))}'>${escape(label(author, authorTitle))}</font></b>" +
                 "&nbsp;&nbsp;<font color='${hex(IncommColors.muted)}'>${escape(subtitle)}</font></html>"
         )
 
@@ -80,9 +80,14 @@ object ThreadUi {
 
     fun accent(author: String): Color = IncommColors.bubbleAccent(author)
 
-    fun label(author: String) = when (author) {
-        AUTHOR_AGENT -> "agent"
-        AUTHOR_USER -> "you"
+    /**
+     * Display name for an author.
+     * - User: [authorTitle] if present (e.g. "Jan Tobola"), else "you"
+     * - Agent: "Agent" if no title, "Agent (Opus 4.6)" if title present
+     */
+    fun label(author: String, authorTitle: String? = null) = when (author) {
+        AUTHOR_USER -> if (!authorTitle.isNullOrBlank()) authorTitle else "you"
+        AUTHOR_AGENT -> if (!authorTitle.isNullOrBlank()) "Agent ($authorTitle)" else "Agent"
         else -> author
     }
 

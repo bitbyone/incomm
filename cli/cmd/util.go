@@ -8,9 +8,10 @@ import (
 	"incomm/internal/store"
 )
 
-// openStore resolves the project root from the global --root flag.
+// openStore resolves the project root from the global --root flag and the
+// branch from --branch (or auto-detected from .git/HEAD).
 func openStore() (*store.Store, error) {
-	return store.Open(flagRoot)
+	return store.Open(flagRoot, flagBranch)
 }
 
 // emitJSON writes v to stdout as indented JSON.

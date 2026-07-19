@@ -9,11 +9,11 @@ can also leave its **own** comments on specific lines during a review. Everythin
 is stored in one JSON file both sides share.
 
 ```
-┌────────────────────────┐        <project-root>/.incomm/notes.json        ┌───────────────────┐
+┌────────────────────────┐   <project-root>/.incomm/notes_<branch>.json   ┌───────────────────┐
 │  IntelliJ plugin        │  ───────────────  read / write  ─────────────▶ │  CLI  (binary     │
 │  (Kotlin) — the human   │ ◀───────────────  read / write  ─────────────  │  `incomm`, Go)    │
 │  adds/answers inline    │        (atomic writes, merge-on-write,         │  the AI agent      │
-└────────────────────────┘         plugin live-reloads on change)          └───────────────────┘
+└────────────────────────┘  plugin live-reloads; branch-scoped files)     └───────────────────┘
 ```
 
 ---
@@ -43,7 +43,7 @@ incomm/
 └── cli/                      # Go module `incomm` (see §5)
     ├── main.go
     ├── cmd/                  # one file per cobra command
-    └── internal/{model,store,anchor}/
+    └── internal/{model,store,anchor,git}/
 ```
 
 ---
@@ -52,12 +52,17 @@ incomm/
 
 - **A "note" is a thread.** It has an original comment plus zero or more replies.
   Fields: `id`, `file` (project-root-relative, `/` separators), `startLine`/`endLine`
-  (1-based inclusive), `content`, `author` (`user`|`agent`), `resolved`, `orphaned`,
-  timestamps, `anchor`, `replies[]`. See §11 for the exact JSON.
-- **Storage:** everything lives in `<project-root>/.incomm/notes.json`. Writers use
-  **atomic writes** (temp file + rename). The plugin uses **merge-on-write** so its writes
-  never clobber notes the agent added concurrently (within a single note it's last-write-wins).
-  The plugin watches the file and live-reloads on external (agent) writes.
+  (1-based inclusive), `content`, `author` (`user`|`agent`), `authorTitle` (display
+  name), `resolved`, `orphaned`, timestamps, `anchor`, `replies[]`. See §11 for the
+  exact JSON.
+- **Storage:** everything lives in `<project-root>/.incomm/notes_<branch>.json`
+  (one file per git branch; falls back to `notes.json` when git is unavailable).
+  Writers use **atomic writes** (temp file + rename). The plugin uses
+  **merge-on-write** so its writes never clobber notes the agent added
+  concurrently (within a single note it's last-write-wins). The plugin watches
+  the file and live-reloads on external (agent) writes. When the branch changes,
+  the plugin switches to the new branch's file (existing or empty) and the CLI
+  auto-detects the branch from `.git/HEAD`.
 - **Anchoring:** comments stay attached to the right line even as files change, via a
   best-effort text anchor (prefixes + context + checksum). Positions are recomputed
   (reindexed) **live** on every file change — in the plugin as you type, and in the CLI
@@ -141,17 +146,18 @@ Go module `incomm`, cobra-based, one command per file in `cli/cmd/`.
 
 **Global flags** (persistent):
 - `--root <dir>` — project root; default = CWD, walking **up** to find an existing `.incomm/`.
+- `--branch <name>` — git branch for notes scoping; default = auto-detect from `.git/HEAD`.
 - `--json` — machine-readable output. Agents should always pass this.
 
 | Command | Purpose |
 |---------|---------|
 | `list [--file F] [--unresolved] [--json]` | List comments (re-anchors first). `--json` → `{ "notes": [Note,…] }`. |
 | `show <id> [--json]` | One comment + its full thread. |
-| `add -f FILE -l N\|N:M -c TEXT [--author user\|agent]` | New comment on a line/range. `--author` defaults to `agent`. |
-| `reply <id> -c TEXT [--author …]` | Reply to a thread. Defaults to `agent`. |
+| `add -f FILE -l N\|N:M -c TEXT [--author user\|agent] [--author-title T]` | New comment on a line/range. `--author` defaults to `agent`. `--author-title` sets the display name (mandatory for `user`; optional for `agent`, e.g. model name). |
+| `reply <id> -c TEXT [--author …] [--author-title T]` | Reply to a thread. Defaults to `agent`. |
 | `resolve <id>` / `unresolve <id>` | Mark done / reopen. |
 | `rm <id>` | Delete one comment. |
-| `clear` | Delete ALL comments (removes `notes.json`). |
+| `clear` | Delete ALL comments for the current branch. |
 | `reanchor [--file F]` | Recompute line positions from anchors (self-heal after edits). |
 | `anchor get <id> [--json]` | Print a comment's current position + anchor fields. |
 | `anchor set <id> [--line N\|N:M] [--start-prefix …] [--end-prefix …] [--context-before …] [--context-after …] [--checksum …] [--orphaned] [--no-recompute]` | Low-level: set a comment's final position and/or edit anchor fields. `--line` recomputes the anchor from the file and un-orphans (unless `--no-recompute`). |
@@ -162,8 +168,11 @@ Go module `incomm`, cobra-based, one command per file in `cli/cmd/`.
 - `model/` — the JSON types (`NotesFile`, `Note`, `Anchor`, `Reply`), `NewID`, `NowUTC`. JSON
   tags MUST match §11 / the Kotlin model.
 - `store/` — locate root (`Open`), `Load`/`Save` (atomic), `Clear`, `RelFile`/`AbsFile`,
-  `ReadLines`, `SplitLines`.
+  `ReadLines`, `SplitLines`. Branch-scoped filenames (`notes_<branch>.json`).
 - `anchor/` — `Compute`, `Reanchor`, the scoring algorithm from §11.
+- `git/` — pure-filesystem git branch detection (`DetectBranch`, `SanitizeBranch`)
+  and user identity (`DetectUserName`). Reads `.git/HEAD` and git config directly;
+  supports worktrees. No git binary required.
 
 ---
 
@@ -177,18 +186,29 @@ registration): **`NotesService`** (data) and **`IncommEditorTracker`** (editor w
 - **`store/NotesService`** — `@Service(PROJECT)`. Owns the in-memory model and all
   reads/mutations; publishes `IncommNotesListener.TOPIC.notesChanged()` after every change.
   Persists on a single background thread with **merge-on-write**: it reloads the current
-  `notes.json` and folds in any notes the model doesn't know about (comments the agent added
+  notes file and folds in any notes the model doesn't know about (comments the agent added
   concurrently) before saving atomically — so a plugin write never clobbers the agent's notes.
   A `locallyDeleted` guard stops a just-deleted note from being resurrected by that merge.
+  **Branch-scoped:** notes are stored in `notes_<branch>.json` (auto-detected via
+  `BranchDetector`); when the branch changes the service flushes pending writes, switches
+  to the new file, and publishes a refresh.
   Key methods: `allNotes`, `notesForFile`, `hasNotesForFile`, `find`, `isEmpty`, `hasNoteOnLine`,
   `addNote`, `updateContent`, `addReply`, `updateReply`, `removeReply`, `setResolved`,
   `updatePosition`, `applySavedPositions`, `removeNote`, `removeNotesForFile`, `clearAll`,
   `reanchorAllFromDisk`, `reanchorFilesFromDisk`, `reload`, `notesPath`, `flushWrites` (test hook).
-- **`store/NotesStore`** — disk IO for a base path: load/save (temp+rename), clear, readLines.
+- **`store/NotesStore`** — disk IO for a base path and optional branch: load/save (temp+rename),
+  clear, readLines. Branch determines the filename (`notes_<branch>.json` or `notes.json`).
+- **`store/BranchDetector`** — `@Service(PROJECT)`. Detects the current git branch at startup
+  by reading `.git/HEAD` (no git binary needed; supports worktrees). Subscribes to IntelliJ's
+  `BranchChangeListener` API for live branch-switch detection. Provides `addListener` for
+  `NotesService` to react to branch changes. Also reads `git user.name` for `authorTitle`.
+- **`store/AgentNotifier`** — fires balloon notifications when new agent-authored content
+  (threads or replies) arrives from an external file change. Click navigates to the line.
 - **`store/IncommPaths`** — `relPath(project, vf)` and `findVirtualFile(project, rel)`.
 - **`store/IncommNotesListener`** — message-bus topic (`notesChanged`).
 - **`store/NotesFileWatcher`** — `AsyncFileListener`; reloads the model when the agent/CLI
-  writes `notes.json` externally → drives **live** UI refresh.
+  writes the notes file externally, or when the `.incomm/` directory is deleted → drives
+  **live** UI refresh.
 - **`store/IncommSourceFileWatcher`** — `AsyncFileListener`; reanchors a file's notes from disk
   when its **source** changes outside the IDE (agent/CLI code edits) and it isn't open in an editor.
 - **`model/Notes.kt`** — `NotesFile`, `Note`, `Anchor`, `Reply`, `AUTHOR_USER`/`AUTHOR_AGENT`,
@@ -288,6 +308,7 @@ Tools-menu / global:
 | `incomm.ToggleResolved` | Incomm: Show/Hide Resolved Threads | show/hide **resolved** cards only |
 | `incomm.ClearFile` | Incomm: Clear Threads in File | delete threads for the current file (confirm) |
 | `incomm.Clear` | Incomm: Clear All Threads | delete everything (confirm) |
+| `incomm.Reload` | Incomm: Reload State | force-reload the notes model from disk and refresh all UI |
 
 Terminology: a **thread** is the whole envelope (`Note` in code); its original **comment**
 is what started it, followed by **replies**. Every action is prefixed `Incomm:`.
@@ -384,6 +405,7 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
 | Change any colour | `ui/IncommColors.kt` only (theme-derived; never hard-code elsewhere) |
 | Change user-facing colours / date format | `settings/IncommSettings.kt` + `settings/IncommConfigurable.kt` |
 | Change data/persistence | `store/NotesService.kt`, `store/NotesStore.kt` |
+| Change branch detection | `store/BranchDetector.kt` (plugin), `cli/internal/git/` (CLI) |
 | Change what the agent skill says | `cli/cmd/skill.go` (`skillMarkdown` const) |
 
 ---
@@ -391,6 +413,9 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
 ## 10. Notes
 
 - Add `.incomm/` to your project's `.gitignore` unless you want to commit review state.
+- Notes are scoped to the current git branch: each branch gets its own file
+  (`notes_main.json`, `notes_feature_x.json`, etc.). When no git repo is present,
+  the legacy `notes.json` is used.
 - The plugin and CLI can both write concurrently; writes are atomic and the plugin merges on
   write (never clobbering the agent's added notes), reconciled by the plugin's file watcher.
 
@@ -405,24 +430,39 @@ schema and implement the anchoring algorithm identically. The fixtures under
 
 ### 11.1 File location
 
-Comments live in a single JSON file at the project root:
+Comments live in a **branch-scoped** JSON file at the project root:
 
 ```
-<project-root>/.incomm/notes.json
+<project-root>/.incomm/notes_<branch>.json   # e.g. notes_main.json
+<project-root>/.incomm/notes.json             # fallback when git is unavailable
 ```
+
+When a git repository is detected, the branch name is read from `.git/HEAD`
+(no git binary required; worktrees are supported). The raw branch name is
+**sanitized** for filenames: slashes become underscores
+(`feature/cool-thing` → `notes_feature_cool-thing.json`). A detached HEAD or
+a non-git project falls back to the legacy `notes.json`.
+
+Switching branches automatically switches the active notes file. Each branch
+gets its own independent set of threads. Nothing is lost — switching back
+restores the previous branch's threads.
 
 The project root is:
 
-- **Plugin:** the IntelliJ project's base path.
+- **Plugin:** the IntelliJ project's base path. The branch is detected via
+  IntelliJ's `BranchChangeListener` API (fires for any VCS branch change) with
+  a fallback to reading `.git/HEAD` at startup.
 - **CLI:** the nearest ancestor directory (starting from `--root` or CWD) that
   contains a `.incomm/` directory. If none is found, `.incomm/` is created in
-  `--root`/CWD.
+  `--root`/CWD. The branch is auto-detected from `.git/HEAD` and can be
+  overridden with `--branch <name>`.
 
 ### 11.2 JSON schema (`version: 1`)
 
 ```jsonc
 {
   "version": 1,
+  "branch": "feature/cool-thing",  // raw git branch name (authoritative); set by first writer
   "notes": [
     {
       "id": "c7f3a1b2",          // stable, unique (8+ hex chars)
@@ -440,12 +480,14 @@ The project root is:
       "resolved": false,
       "orphaned": false,          // true when re-anchoring could not confidently place the note
       "author": "user",           // "user" | "agent"
+      "authorTitle": "Jan Tobola", // display name (git user.name for user, model name for agent)
       "createdAt": "2026-07-17T10:00:00Z", // RFC3339 / ISO-8601 UTC
       "updatedAt": "2026-07-17T10:00:00Z",
       "replies": [
         {
           "id": "r1a2",
           "author": "agent",       // "user" | "agent"
+          "authorTitle": "Opus 4.6", // optional display name
           "content": "Done — wrapped in an error check.",
           "createdAt": "2026-07-17T10:05:00Z"
         }
@@ -458,7 +500,18 @@ The project root is:
 #### Field rules
 
 - Unknown fields MUST be preserved on round-trip where practical (forward-compat).
+- `branch` is the **raw** (unsanitized) git branch name, e.g. `"feature/cool-thing"`.
+  It is authoritative — the filename slug (`notes_feature_cool-thing.json`) is only
+  a filesystem distinction. Whoever creates the first thread is responsible for
+  writing this field (both the plugin and CLI do so automatically on every save).
+  Absent or `null` in legacy files (pre-branch support).
 - `file` always uses `/` separators, even on Windows.
+- `author` is a type discriminator: `"user"` or `"agent"`. `authorTitle` is the
+  display name — the plugin sets it from `git user.name` for user-authored
+  comments; agents may set it via `--author-title` (e.g. `"Opus 4.6"`).
+  `authorTitle` is optional / nullable; absent means no explicit name.
+  Rendering: user comments show the title directly (e.g. "Jan Tobola"); agent
+  comments show "Agent" or "Agent (Opus 4.6)" when a title is present.
 - Line numbers are **1-based** and **inclusive**. A single-line note has
   `startLine == endLine`.
 - `replies` MAY be empty or omitted (treated as empty).
@@ -571,7 +624,7 @@ open in an editor are reanchored from disk by `IncommSourceFileWatcher`.
 
 The file may be written by both the plugin and the CLI (agent). Writers MUST use
 an **atomic write**: write to a temp file in `.incomm/` and `rename()` over
-`notes.json`. The plugin watches the file and reloads on external change (a
+the notes file. The plugin watches the file and reloads on external change (a
 reload that yields no change is a no-op, so the plugin's own writes don't cause
 refresh loops). To keep concurrent writers from stepping on each other, the
 plugin uses **merge-on-write**: before saving it reloads the current file and

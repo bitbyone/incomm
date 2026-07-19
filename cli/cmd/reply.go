@@ -3,14 +3,16 @@ package cmd
 import (
 	"fmt"
 
+	"incomm/internal/git"
 	"incomm/internal/model"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	replyContent string
-	replyAuthor  string
+	replyContent     string
+	replyAuthor      string
+	replyAuthorTitle string
 )
 
 var replyCmd = &cobra.Command{
@@ -23,6 +25,13 @@ var replyCmd = &cobra.Command{
 		}
 		if replyAuthor != model.AuthorUser && replyAuthor != model.AuthorAgent {
 			return fmt.Errorf("--author must be %q or %q", model.AuthorUser, model.AuthorAgent)
+		}
+		authorTitle := replyAuthorTitle
+		if replyAuthor == model.AuthorUser && authorTitle == "" {
+			authorTitle = git.DetectUserName(".")
+			if authorTitle == "" {
+				return fmt.Errorf("--author-title is required for user-authored replies (or set git user.name)")
+			}
 		}
 		id := args[0]
 
@@ -40,10 +49,11 @@ var replyCmd = &cobra.Command{
 		}
 		now := model.NowUTC()
 		reply := model.Reply{
-			ID:        model.NewID(),
-			Author:    replyAuthor,
-			Content:   replyContent,
-			CreatedAt: now,
+			ID:          model.NewID(),
+			Author:      replyAuthor,
+			AuthorTitle: authorTitle,
+			Content:     replyContent,
+			CreatedAt:   now,
 		}
 		note.Replies = append(note.Replies, reply)
 		note.UpdatedAt = now
@@ -62,5 +72,6 @@ var replyCmd = &cobra.Command{
 func init() {
 	replyCmd.Flags().StringVarP(&replyContent, "content", "c", "", "reply text (required)")
 	replyCmd.Flags().StringVar(&replyAuthor, "author", model.AuthorAgent, "author: user or agent")
+	replyCmd.Flags().StringVar(&replyAuthorTitle, "author-title", "", "display name (e.g. model name for agent)")
 	rootCmd.AddCommand(replyCmd)
 }

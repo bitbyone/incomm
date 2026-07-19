@@ -84,7 +84,7 @@ class NoteListCellRenderer : ListCellRenderer<Note> {
             1 -> "1 reply   "
             else -> "$n replies   "
         }
-        bottom.append("$replies${note.location()}", subAttr)
+        bottom.append("$replies${shortLocation(note)}", subAttr)
 
         return panel
     }
@@ -92,5 +92,11 @@ class NoteListCellRenderer : ListCellRenderer<Note> {
     private fun oneLine(text: String): String {
         val flat = text.replace("\n", " ").trim()
         return if (flat.length > 80) flat.take(77) + "\u2026" else flat
+    }
+
+    /** File name (no directory) + line range, e.g. "main.go:42" or "main.go:42-48". */
+    private fun shortLocation(note: Note): String {
+        val name = note.file.substringAfterLast('/')
+        return if (note.endLine != note.startLine) "$name:${note.startLine}-${note.endLine}" else "$name:${note.startLine}"
     }
 }

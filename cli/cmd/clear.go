@@ -6,8 +6,9 @@ import (
 
 var clearCmd = &cobra.Command{
 	Use:   "clear",
-	Short: "Delete ALL comments (removes .incomm/notes.json)",
-	Long: `Delete every comment by removing .incomm/notes.json.
+	Short: "Delete ALL comments for the current branch",
+	Long: `Delete every comment by removing the branch-scoped notes file
+(e.g. .incomm/notes_main.json, or .incomm/notes.json if git is unavailable).
 
 This is the CLI equivalent of the "Incomm: Clear All Comments" IDE action. It is
 intentionally non-interactive so agents and scripts can call it directly.`,

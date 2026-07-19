@@ -130,12 +130,12 @@ class NoteCardComponent(
             anchor = GridBagConstraints.NORTHWEST
             insets = JBUI.insetsBottom(gap)
         }
-        body.add(bubbleFor(note, KEY_ORIGINAL, note.author, note.createdAt, note.content, null), gbc)
+        body.add(bubbleFor(note, KEY_ORIGINAL, note.author, note.authorTitle, note.createdAt, note.content, null), gbc)
         for (reply in note.replies) {
             gbc.gridy++
             // Replies are lightly nested under the original comment.
             gbc.insets = JBUI.insets(0, indent, gap, 0)
-            body.add(bubbleFor(note, keyReply(reply.id), reply.author, reply.createdAt, reply.content, reply.id), gbc)
+            body.add(bubbleFor(note, keyReply(reply.id), reply.author, reply.authorTitle, reply.createdAt, reply.content, reply.id), gbc)
         }
 
         revalidate()
@@ -174,6 +174,7 @@ class NoteCardComponent(
         note: Note,
         key: String,
         author: String,
+        authorTitle: String?,
         createdAt: String,
         text: String,
         replyId: String?,
@@ -181,7 +182,7 @@ class NoteCardComponent(
         val editing = editingKey == key
         val bubble = Bubble(author)
         val headerRow = JPanel(BorderLayout()).apply { isOpaque = false }
-        headerRow.add(ThreadUi.authorLabel(author, ThreadUi.prettyTime(createdAt)), BorderLayout.CENTER)
+        headerRow.add(ThreadUi.authorLabel(author, ThreadUi.prettyTime(createdAt), authorTitle), BorderLayout.CENTER)
 
         val icons = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
         if (editing) {

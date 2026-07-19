@@ -53,8 +53,13 @@ class NoteGutterIconRenderer(
             val snippet = note.content.replace("\n", " ").let {
                 if (it.length > 80) it.take(77) + "\u2026" else it
             }
-            // Agent comments are prefixed "Agent:"; the human's are shown as-is.
-            val who = if (note.author == AUTHOR_AGENT) "<b>Agent:</b> " else ""
+            val who = when {
+                note.author == AUTHOR_AGENT && !note.authorTitle.isNullOrBlank() ->
+                    "<b>Agent (${escapeHtml(note.authorTitle!!)}):</b> "
+                note.author == AUTHOR_AGENT -> "<b>Agent:</b> "
+                !note.authorTitle.isNullOrBlank() -> "<b>${escapeHtml(note.authorTitle!!)}:</b> "
+                else -> ""
+            }
             val meta = buildList {
                 if (note.orphaned) add("orphaned") else if (note.resolved) add("resolved")
                 if (note.replies.isNotEmpty()) add("${note.replies.size} repl.")

@@ -12,13 +12,17 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 /**
- * Pure filesystem access to `<root>/.incomm/notes.json`. No IntelliJ
+ * Pure filesystem access to `<root>/.incomm/notes[_<branch>].json`. No IntelliJ
  * dependencies, so it is unit-testable and mirrors the Go `internal/store`.
+ *
+ * @param root      the project root directory
+ * @param rawBranch raw git branch name (empty = legacy `notes.json`)
  */
-class NotesStore(val root: Path) {
+class NotesStore(val root: Path, val rawBranch: String = "") {
 
     val dir: Path get() = root.resolve(DIR_NAME)
-    val notesPath: Path get() = dir.resolve(FILE_NAME)
+    val notesFileName: String get() = BranchDetector.notesFileName(rawBranch)
+    val notesPath: Path get() = dir.resolve(notesFileName)
 
     /** Load notes.json; a missing file yields an empty, normalized [NotesFile]. */
     fun load(): NotesFile {

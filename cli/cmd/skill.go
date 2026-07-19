@@ -73,11 +73,16 @@ description: >-
 
 # incomm — inline code-review comments (agent skill)
 
-incomm is a command-line tool that reads and writes ` + "`" + `<project-root>/.incomm/notes.json` + "`" + `.
+incomm is a command-line tool that reads and writes ` + "`" + `<project-root>/.incomm/notes_<branch>.json` + "`" + `
+(or ` + "`" + `notes.json` + "`" + ` when git is unavailable).
 A human attaches comments to specific lines of files inside their editor. You,
 the AI agent, use the incomm CLI to read those comments, do the work, and reply —
 your reply shows up inline in the editor, right under the referenced line. You can also
 leave your OWN comments on specific lines while reviewing code.
+
+Notes are scoped to the current git branch. When you switch branches, incomm
+automatically switches to the corresponding notes file. The branch is detected by
+reading ` + "`" + `.git/HEAD` + "`" + ` — no git binary is required.
 
 This is the primary way to communicate concrete answers and requests with the human
 line by line, anchored to real code, instead of only in chat.
@@ -86,9 +91,13 @@ line by line, anchored to real code, instead of only in chat.
 
 - Run incomm from inside the project. It locates the ` + "`" + `.incomm/` + "`" + ` directory by walking
   up from the current directory. If you run it elsewhere, pass ` + "`" + `--root <project-dir>` + "`" + `.
+- Notes are branch-scoped: incomm auto-detects the current git branch and uses
+  ` + "`" + `.incomm/notes_<branch>.json` + "`" + `. Pass ` + "`" + `--branch <name>` + "`" + ` to override auto-detection.
 - Add ` + "`" + `--json` + "`" + ` to any command for machine-readable output. Prefer ` + "`" + `--json` + "`" + ` and parse it.
 - The ` + "`" + `--author` + "`" + ` flag defaults to ` + "`" + `agent` + "`" + ` (that is you) for ` + "`" + `add` + "`" + ` and ` + "`" + `reply` + "`" + `.
   Comments written by the human have author ` + "`" + `user` + "`" + `.
+- Use ` + "`" + `--author-title` + "`" + ` to identify yourself (e.g. ` + "`" + `--author-title "Opus 4.6"` + "`" + `).
+  The title is shown in the IDE as "Agent (Opus 4.6)".
 
 ## What you can do
 
@@ -142,8 +151,8 @@ incomm add -f src/app/main.go -l 42:48 -c "Extract this block into a helper."
 ~~~text
 incomm list [--file F] [--unresolved] [--json]      list comments (optionally filtered)
 incomm show <id> [--json]                            show one comment and its full thread
-incomm add -f F -l N|N:M -c TEXT [--author agent]    add a comment on line(s)
-incomm reply <id> -c TEXT [--author agent]           reply to a comment
+incomm add -f F -l N|N:M -c TEXT [--author-title T]  add a comment on line(s)
+incomm reply <id> -c TEXT [--author-title T]         reply to a comment
 incomm resolve <id>                                  mark a comment resolved
 incomm unresolve <id>                                reopen a resolved comment
 incomm rm <id>                                       delete one comment
@@ -203,7 +212,7 @@ incomm anchor recompute --file src/app/main.go
 ` + "`" + `incomm list --json` + "`" + ` returns:
 
 ~~~json
-{ "notes": [ /* Note objects */ ] }
+{ "branch": "main", "notes": [ /* Note objects */ ] }
 ~~~
 
 ` + "`" + `incomm show` + "`" + ` / ` + "`" + `add` + "`" + ` / ` + "`" + `reply` + "`" + ` with ` + "`" + `--json` + "`" + ` return a single Note object:
@@ -225,10 +234,11 @@ incomm anchor recompute --file src/app/main.go
   "resolved": false,
   "orphaned": false,
   "author": "user",
+  "authorTitle": "Jan Tobola",
   "createdAt": "2026-01-01T00:00:00Z",
   "updatedAt": "2026-01-01T00:00:00Z",
   "replies": [
-    { "id": "9c1d0e42", "author": "agent", "content": "the reply text", "createdAt": "2026-01-01T00:00:00Z" }
+    { "id": "9c1d0e42", "author": "agent", "authorTitle": "Opus 4.6", "content": "the reply text", "createdAt": "2026-01-01T00:00:00Z" }
   ]
 }
 ~~~

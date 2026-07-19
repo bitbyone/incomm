@@ -17,16 +17,25 @@ import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
 
 /**
- * Project-level owner of the in-memory notes model and its `.incomm/notes.json`
- * persistence. All reads/mutations go through here. Mutations update memory
- * synchronously, notify listeners, and persist to disk on a single background
- * thread (serialized, atomic).
+ * Project-level owner of the in-memory notes model and its
+ * `.incomm/notes[_<branch>].json` persistence. All reads/mutations go through
+ * here. Mutations update memory synchronously, notify listeners, and persist
+ * to disk on a single background thread (serialized, atomic).
+ *
+ * Notes are scoped to the current git branch. When the branch changes (detected
+ * via IntelliJ's [BranchChangeListener][com.intellij.openapi.vcs.BranchChangeListener]),
+ * the service switches to the new branch file (existing or empty) and publishes
+ * a refresh so the UI rebuilds with the new branch's threads.
  */
 @Service(Service.Level.PROJECT)
 class NotesService(private val project: Project) : Disposable {
 
     private val lock = Any()
     private var model: NotesFile = NotesFile()
+
+    /** Current raw branch name; empty = no git / legacy. Updated on branch switch. */
+    @Volatile
+    private var currentBranch: String = ""
 
     /**
      * Ids of notes deleted locally but whose deletion may not have hit disk yet.
@@ -39,15 +48,24 @@ class NotesService(private val project: Project) : Disposable {
         AppExecutorUtil.createBoundedApplicationPoolExecutor("incomm-notes-writer", 1)
 
     init {
+        // Detect the initial branch from .git/HEAD (no VCS timing dependency).
+        val detector = BranchDetector.getInstance(project)
+        currentBranch = detector.branch
         reloadInternal(publish = false)
+
+        // When the branch changes, flush pending writes for the old branch, then
+        // switch to the new branch file and reload.
+        detector.addListener { newBranch ->
+            onBranchChanged(newBranch)
+        }
     }
 
     private fun storeOrNull(): NotesStore? {
         val base = project.basePath ?: return null
-        return NotesStore(Paths.get(base))
+        return NotesStore(Paths.get(base), currentBranch)
     }
 
-    /** Absolute path to notes.json, or null if the project has no base path. */
+    /** Absolute path to the branch-scoped notes file, or null if the project has no base path. */
     fun notesPath(): Path? = storeOrNull()?.notesPath
 
     // ---- reads -------------------------------------------------------------
@@ -75,6 +93,30 @@ class NotesService(private val project: Project) : Disposable {
     /** Reload from disk and notify listeners. */
     fun reload() = reloadInternal(publish = true)
 
+    /**
+     * Handle a branch switch: flush any pending writes for the old branch,
+     * switch to the new branch, and reload from the new branch file.
+     * Always publishes a change notification so the editor clears stale cards
+     * even when switching to an empty (or new) branch.
+     */
+    private fun onBranchChanged(newBranch: String) {
+        // Flush pending writes for the old branch so nothing is lost.
+        try {
+            writeExecutor.submit { }.get(2, TimeUnit.SECONDS)
+        } catch (_: Exception) { /* best effort */ }
+
+        currentBranch = newBranch
+        synchronized(lock) {
+            model = NotesFile()
+            locallyDeleted.clear()
+        }
+        // Load from the new branch file (may be empty / nonexistent).
+        reloadInternal(publish = false)
+        // Always publish: even switching to an empty branch must rebuild the UI
+        // to clear stale thread cards from the previous branch.
+        publishChanged()
+    }
+
     private fun reloadInternal(publish: Boolean) {
         val store = storeOrNull() ?: return
         val loaded = try {
@@ -86,12 +128,25 @@ class NotesService(private val project: Project) : Disposable {
         // Skip the notification (and the UI rebuild it drives) when the file on
         // disk already matches memory — e.g. the reload triggered by our own
         // atomic write. This avoids redundant, viewport-disturbing refreshes.
+        var agentNews: List<AgentNotifier.AgentNews> = emptyList()
         val changed = synchronized(lock) {
             // Don't resurrect notes we've deleted locally but not yet flushed.
             if (locallyDeleted.isNotEmpty()) loaded.notes.removeAll { it.id in locallyDeleted }
-            if (model == loaded) false else { model = loaded; true }
+            if (model == loaded) false
+            else {
+                // Diff before replacing: detect new agent content for notifications.
+                agentNews = AgentNotifier.diff(model, loaded)
+                model = loaded
+                true
+            }
         }
         if (publish && changed) publishChanged()
+        if (publish && agentNews.isNotEmpty()) {
+            ApplicationManager.getApplication().invokeLater(
+                { if (!project.isDisposed) AgentNotifier.notify(project, agentNews) },
+                project.disposed,
+            )
+        }
     }
 
     // ---- mutations ---------------------------------------------------------
@@ -104,7 +159,9 @@ class NotesService(private val project: Project) : Disposable {
         content: String,
         author: String,
         fileLines: List<String>,
+        authorTitle: String? = null,
     ): Note {
+        val title = authorTitle ?: defaultAuthorTitle(author)
         val now = nowUtc()
         val note = Note(
             id = newId(),
@@ -116,6 +173,7 @@ class NotesService(private val project: Project) : Disposable {
             resolved = false,
             orphaned = false,
             author = author,
+            authorTitle = title,
             createdAt = now,
             updatedAt = now,
             replies = mutableListOf(),
@@ -130,8 +188,9 @@ class NotesService(private val project: Project) : Disposable {
         it.updatedAt = nowUtc()
     }
 
-    fun addReply(id: String, content: String, author: String) = mutate(id) {
-        it.replies.add(Reply(newId(), author, content, nowUtc()))
+    fun addReply(id: String, content: String, author: String, authorTitle: String? = null) = mutate(id) {
+        val title = authorTitle ?: defaultAuthorTitle(author)
+        it.replies.add(Reply(newId(), author, title, content, nowUtc()))
         it.updatedAt = nowUtc()
     }
 
@@ -229,7 +288,7 @@ class NotesService(private val project: Project) : Disposable {
         return removed
     }
 
-    /** Delete every note by removing notes.json. */
+    /** Delete every note for the current branch by removing its notes file. */
     fun clearAll() {
         synchronized(lock) { model = NotesFile() }
         publishChanged()
@@ -353,6 +412,8 @@ class NotesService(private val project: Project) : Disposable {
                 model.deepCopy()
             }
             try {
+                // Stamp the raw branch name so the JSON is self-describing.
+                if (currentBranch.isNotEmpty()) merged.branch = currentBranch
                 store.save(merged)
             } catch (e: Exception) {
                 thisLogger().warn("incomm: save failed", e)
@@ -378,6 +439,22 @@ class NotesService(private val project: Project) : Disposable {
         if (project.isDisposed) return
         project.messageBus.syncPublisher(IncommNotesListener.TOPIC).notesChanged()
     }
+
+    /** Git user.name cached once for the project lifetime (user-authored comments). */
+    private val gitUserName: String? by lazy {
+        project.basePath?.let { BranchDetector.detectUserName(it) }
+    }
+
+    /**
+     * Resolve a default [authorTitle] for locally created comments. For [AUTHOR_USER]
+     * this is the git `user.name` (mandatory — falls back to the OS user name);
+     * for [AUTHOR_AGENT] it stays null (the agent supplies its own title via
+     * `--author-title`).
+     */
+    private fun defaultAuthorTitle(author: String): String? =
+        if (author == dev.incomm.model.AUTHOR_USER) {
+            gitUserName ?: System.getProperty("user.name") ?: "User"
+        } else null
 
     override fun dispose() {
         writeExecutor.shutdown()

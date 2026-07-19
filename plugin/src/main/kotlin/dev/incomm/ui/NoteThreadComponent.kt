@@ -107,10 +107,10 @@ class NoteThreadComponent(
             insets = JBUI.insetsBottom(8)
         }
 
-        threadHost.add(bubbleFor(note, KEY_ORIGINAL, note.author, note.createdAt, note.content, null, 0), gbc)
+        threadHost.add(bubbleFor(note, KEY_ORIGINAL, note.author, note.authorTitle, note.createdAt, note.content, null, 0), gbc)
         gbc.gridy++
         for (reply in note.replies) {
-            threadHost.add(bubbleFor(note, keyReply(reply.id), reply.author, reply.createdAt, reply.content, reply.id, JBUI.scale(18)), gbc)
+            threadHost.add(bubbleFor(note, keyReply(reply.id), reply.author, reply.authorTitle, reply.createdAt, reply.content, reply.id, JBUI.scale(18)), gbc)
             gbc.gridy++
         }
         if (addingReply) {
@@ -131,11 +131,14 @@ class NoteThreadComponent(
     }
 
     /**
-     * A read-only, syntax-highlighted preview of the note's lines. For a
-     * single-line comment it shows the line plus one above and one below (3
-     * lines). For a multi-line range it shows the range itself, capped at
-     * [MAX_RANGE_LINES] lines. The comment's own line(s) are highlighted.
-     * Returns null if the file/document can't be resolved.
+     * A read-only, syntax-highlighted preview of the note's lines.
+     *
+     * - **Single line**: the line ±2 context (5 lines). The note line is highlighted.
+     * - **Range ≤ 8 lines**: the full range +1 above +1 below. The range is highlighted.
+     * - **Range > 8 lines**: the full range, no extra context. All highlighted.
+     *
+     * A vertical scrollbar appears when the preview exceeds [MAX_VISIBLE_LINES]
+     * lines. Returns null if the file/document can't be resolved.
      */
     private fun codePreview(note: Note): JComponent? {
         val vf = IncommPaths.findVirtualFile(project, note.file) ?: return null
@@ -145,31 +148,44 @@ class NoteThreadComponent(
 
         val start0 = (note.startLine - 1).coerceIn(0, lineCount - 1)
         val end0 = (note.endLine - 1).coerceIn(start0, lineCount - 1)
+        val rangeSize = end0 - start0 + 1
 
         val from: Int
         val to: Int
         val hlFrom: Int
         val hlTo: Int
-        if (end0 == start0) {
-            // Single line: show one line above and one below, highlight the line.
-            from = (start0 - 1).coerceAtLeast(0)
-            to = (start0 + 1).coerceAtMost(lineCount - 1)
-            hlFrom = start0
-            hlTo = start0
-        } else {
-            // Multi-line: show the range itself (no extra context), capped at 7.
-            from = start0
-            to = (start0 + MAX_RANGE_LINES - 1).coerceAtMost(end0)
-            hlFrom = from
-            hlTo = to
+        when {
+            rangeSize == 1 -> {
+                // Single line: 2 above, 2 below (5 rows total).
+                from = (start0 - 2).coerceAtLeast(0)
+                to = (start0 + 2).coerceAtMost(lineCount - 1)
+                hlFrom = start0
+                hlTo = start0
+            }
+            rangeSize <= 8 -> {
+                // Small range: show the whole range + 1 row above and below.
+                from = (start0 - 1).coerceAtLeast(0)
+                to = (end0 + 1).coerceAtMost(lineCount - 1)
+                hlFrom = start0
+                hlTo = end0
+            }
+            else -> {
+                // Large range: show everything, no extra context.
+                from = start0
+                to = end0
+                hlFrom = start0
+                hlTo = end0
+            }
         }
 
         val text = doc.getText(TextRange(doc.getLineStartOffset(from), doc.getLineEndOffset(to)))
+        val visibleLines = to - from + 1
+        val needsScroll = visibleLines > MAX_VISIBLE_LINES
         val snippet = EditorFactory.getInstance().createDocument(text)
         val field = EditorTextField(snippet, project, vf.fileType, /* viewer = */ true, /* oneLineMode = */ false)
         field.setFontInheritedFromLAF(false)
         field.addSettingsProvider { editor ->
-            editor.setVerticalScrollbarVisible(false)
+            editor.setVerticalScrollbarVisible(needsScroll)
             editor.setHorizontalScrollbarVisible(false)
             editor.setBorder(JBUI.Borders.empty())
             editor.settings.apply {
@@ -185,11 +201,18 @@ class NoteThreadComponent(
             for (line in (hlFrom - from)..(hlTo - from)) highlightSnippetLine(editor, line)
         }
 
-        return JPanel(BorderLayout()).apply {
+        val wrapper = JPanel(BorderLayout()).apply {
             isOpaque = false
             border = JBUI.Borders.empty(0, 10, 6, 10)
             add(field, BorderLayout.CENTER)
         }
+        // Cap the preview height so large ranges don't push the thread off-screen.
+        if (needsScroll) {
+            val lineHeight = field.getFontMetrics(field.font).height
+            val maxPx = lineHeight * MAX_VISIBLE_LINES + JBUI.scale(8)
+            field.preferredSize = java.awt.Dimension(field.preferredSize.width, maxPx)
+        }
+        return wrapper
     }
 
     private fun highlightSnippetLine(editor: EditorEx, line: Int) {
@@ -232,6 +255,7 @@ class NoteThreadComponent(
         note: Note,
         key: String,
         author: String,
+        authorTitle: String?,
         createdAt: String,
         text: String,
         replyId: String?,
@@ -241,7 +265,7 @@ class NoteThreadComponent(
         val card = roundedCard(author)
 
         val headerRow = JPanel(BorderLayout()).apply { isOpaque = false }
-        headerRow.add(authorLabel(author, createdAt), BorderLayout.CENTER)
+        headerRow.add(authorLabel(author, authorTitle, createdAt), BorderLayout.CENTER)
 
         val icons = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
         if (editing) {
@@ -268,7 +292,7 @@ class NoteThreadComponent(
     private fun newReplyBubble(note: Note): JComponent {
         val card = roundedCard(AUTHOR_USER)
         val headerRow = JPanel(BorderLayout()).apply { isOpaque = false }
-        headerRow.add(authorLabel(AUTHOR_USER, "new reply"), BorderLayout.CENTER)
+        headerRow.add(authorLabel(AUTHOR_USER, null, "new reply"), BorderLayout.CENTER)
         val editor = editorArea("")
         val icons = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
         icons.add(iconButton(IncommIcons.CHECK, "Send") {
@@ -314,8 +338,8 @@ class NoteThreadComponent(
 
     // ---- small builders -----------------------------------------------------
 
-    private fun authorLabel(author: String, createdAt: String): JBLabel =
-        ThreadUi.authorLabel(author, ThreadUi.prettyTime(createdAt))
+    private fun authorLabel(author: String, authorTitle: String?, createdAt: String): JBLabel =
+        ThreadUi.authorLabel(author, ThreadUi.prettyTime(createdAt), authorTitle)
 
     private fun displayArea(text: String): JBTextArea =
         ThreadUi.flatEditor(text.trim(), rows = 0, editable = false)
@@ -337,7 +361,7 @@ class NoteThreadComponent(
 
     companion object {
         private const val KEY_ORIGINAL = "orig"
-        private const val MAX_RANGE_LINES = 7
+        private const val MAX_VISIBLE_LINES = 10
         private fun keyReply(id: String) = "reply:$id"
 
         private fun escape(s: String) = ThreadUi.escape(s)

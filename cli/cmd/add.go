@@ -6,16 +6,18 @@ import (
 	"strings"
 
 	"incomm/internal/anchor"
+	"incomm/internal/git"
 	"incomm/internal/model"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	addFile    string
-	addLine    string
-	addContent string
-	addAuthor  string
+	addFile        string
+	addLine        string
+	addContent     string
+	addAuthor      string
+	addAuthorTitle string
 )
 
 var addCmd = &cobra.Command{
@@ -38,6 +40,14 @@ Examples:
 		author := addAuthor
 		if author != model.AuthorUser && author != model.AuthorAgent {
 			return fmt.Errorf("--author must be %q or %q", model.AuthorUser, model.AuthorAgent)
+		}
+		// authorTitle is mandatory for user-authored comments.
+		authorTitle := addAuthorTitle
+		if author == model.AuthorUser && authorTitle == "" {
+			authorTitle = git.DetectUserName(".")
+			if authorTitle == "" {
+				return fmt.Errorf("--author-title is required for user-authored comments (or set git user.name)")
+			}
 		}
 
 		st, err := openStore()
@@ -62,18 +72,19 @@ Examples:
 		}
 		now := model.NowUTC()
 		note := model.Note{
-			ID:        model.NewID(),
-			File:      rel,
-			StartLine: startLine,
-			EndLine:   endLine,
-			Anchor:    anchor.Compute(lines, startLine, endLine),
-			Content:   addContent,
-			Resolved:  false,
-			Orphaned:  false,
-			Author:    author,
-			CreatedAt: now,
-			UpdatedAt: now,
-			Replies:   []model.Reply{},
+			ID:          model.NewID(),
+			File:        rel,
+			StartLine:   startLine,
+			EndLine:     endLine,
+			Anchor:      anchor.Compute(lines, startLine, endLine),
+			Content:     addContent,
+			Resolved:    false,
+			Orphaned:    false,
+			Author:      author,
+			AuthorTitle: authorTitle,
+			CreatedAt:   now,
+			UpdatedAt:   now,
+			Replies:     []model.Reply{},
 		}
 		nf.Notes = append(nf.Notes, note)
 		if err := st.Save(nf); err != nil {
@@ -110,5 +121,6 @@ func init() {
 	addCmd.Flags().StringVarP(&addLine, "line", "l", "", "line or range N or N:M (required)")
 	addCmd.Flags().StringVarP(&addContent, "content", "c", "", "comment text (required)")
 	addCmd.Flags().StringVar(&addAuthor, "author", model.AuthorAgent, "author: user or agent")
+	addCmd.Flags().StringVar(&addAuthorTitle, "author-title", "", "display name (e.g. model name for agent, git user.name for user)")
 	rootCmd.AddCommand(addCmd)
 }

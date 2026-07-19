@@ -13,7 +13,7 @@ func TestSaveLoadRoundTripAtomic(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, DirName), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	st, err := Open(root)
+	st, err := Open(root, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestSaveLoadRoundTripAtomic(t *testing.T) {
 	// No stray temp files left behind.
 	entries, _ := os.ReadDir(st.Dir())
 	for _, e := range entries {
-		if e.Name() != FileName {
+		if e.Name() != st.NotesFileName() {
 			t.Errorf("unexpected leftover file: %s", e.Name())
 		}
 	}
@@ -52,7 +52,7 @@ func TestSaveLoadRoundTripAtomic(t *testing.T) {
 		t.Fatalf("clear = %v, %v", existed, err)
 	}
 	if _, err := os.Stat(st.NotesPath()); !os.IsNotExist(err) {
-		t.Error("notes.json should be gone after clear")
+		t.Error("notes file should be gone after clear")
 	}
 }
 
@@ -65,7 +65,7 @@ func TestOpenWalksUpToExistingRoot(t *testing.T) {
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	st, err := Open(nested)
+	st, err := Open(nested, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +85,87 @@ func TestRelFileRejectsOutside(t *testing.T) {
 	}
 	if _, err := st.RelFile(filepath.Join(filepath.Dir(root), "outside.go")); err == nil {
 		t.Error("path outside root should be rejected")
+	}
+}
+
+func TestBranchScopedFileName(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, DirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// No branch → legacy filename.
+	st, _ := Open(root, "")
+	if st.NotesFileName() != FileName {
+		t.Errorf("no branch: filename = %s, want %s", st.NotesFileName(), FileName)
+	}
+
+	// Explicit branch → notes_<branch>.json.
+	st2, _ := Open(root, "main")
+	if st2.NotesFileName() != "notes_main.json" {
+		t.Errorf("branch=main: filename = %s, want notes_main.json", st2.NotesFileName())
+	}
+
+	// Branch with slash gets sanitized.
+	st3, _ := Open(root, "feature/cool")
+	if st3.NotesFileName() != "notes_feature_cool.json" {
+		t.Errorf("branch=feature/cool: filename = %s, want notes_feature_cool.json", st3.NotesFileName())
+	}
+}
+
+func TestBranchAutoDetectFromGit(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, DirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitDir := filepath.Join(root, ".git")
+	if err := os.Mkdir(gitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/develop\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, err := Open(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Branch != "develop" {
+		t.Errorf("auto-detected branch = %q, want %q", st.Branch, "develop")
+	}
+	if st.NotesFileName() != "notes_develop.json" {
+		t.Errorf("filename = %s, want notes_develop.json", st.NotesFileName())
+	}
+}
+
+func TestBranchScopedSaveLoad(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, DirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Save on branch "main".
+	stMain, _ := Open(root, "main")
+	fMain := model.NewNotesFile()
+	fMain.Notes = append(fMain.Notes, model.Note{ID: "m1", File: "a.go", StartLine: 1, EndLine: 1, Author: model.AuthorUser})
+	if err := stMain.Save(fMain); err != nil {
+		t.Fatal(err)
+	}
+
+	// Save on branch "dev".
+	stDev, _ := Open(root, "dev")
+	fDev := model.NewNotesFile()
+	fDev.Notes = append(fDev.Notes, model.Note{ID: "d1", File: "b.go", StartLine: 5, EndLine: 5, Author: model.AuthorAgent})
+	if err := stDev.Save(fDev); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load each and verify isolation.
+	gotMain, _ := stMain.Load()
+	if len(gotMain.Notes) != 1 || gotMain.Notes[0].ID != "m1" {
+		t.Errorf("main notes wrong: %+v", gotMain.Notes)
+	}
+	gotDev, _ := stDev.Load()
+	if len(gotDev.Notes) != 1 || gotDev.Notes[0].ID != "d1" {
+		t.Errorf("dev notes wrong: %+v", gotDev.Notes)
 	}
 }
 

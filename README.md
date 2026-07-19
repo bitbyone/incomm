@@ -12,7 +12,7 @@ is stored in one JSON file both sides share.
 ┌────────────────────────┐        <project-root>/.incomm/notes.json        ┌───────────────────┐
 │  IntelliJ plugin        │  ───────────────  read / write  ─────────────▶ │  CLI  (binary     │
 │  (Kotlin) — the human   │ ◀───────────────  read / write  ─────────────  │  `incomm`, Go)    │
-│  adds/answers inline    │        (atomic writes, last-write-wins,        │  the AI agent      │
+│  adds/answers inline    │        (atomic writes, merge-on-write,         │  the AI agent      │
 └────────────────────────┘         plugin live-reloads on change)          └───────────────────┘
 ```
 
@@ -55,8 +55,9 @@ incomm/
   (1-based inclusive), `content`, `author` (`user`|`agent`), `resolved`, `orphaned`,
   timestamps, `anchor`, `replies[]`. See §11 for the exact JSON.
 - **Storage:** everything lives in `<project-root>/.incomm/notes.json`. Writers use
-  **atomic writes** (temp file + rename). Model is **last-write-wins**, reconciled by
-  reload. The plugin watches the file and live-reloads on external (agent) writes.
+  **atomic writes** (temp file + rename). The plugin uses **merge-on-write** so its writes
+  never clobber notes the agent added concurrently (within a single note it's last-write-wins).
+  The plugin watches the file and live-reloads on external (agent) writes.
 - **Anchoring:** comments stay attached to the right line even as files change, via a
   best-effort text anchor (prefixes + context + checksum). Positions are recomputed
   (reindexed) **live** on every file change — in the plugin as you type, and in the CLI
@@ -174,8 +175,11 @@ registration): **`NotesService`** (data) and **`IncommEditorTracker`** (editor w
 ### 6.1 Data / storage — `store/` + `model/` + `anchor/`
 
 - **`store/NotesService`** — `@Service(PROJECT)`. Owns the in-memory model and all
-  reads/mutations; persists to disk on a single background thread (serialized, atomic);
-  publishes `IncommNotesListener.TOPIC.notesChanged()` after every change.
+  reads/mutations; publishes `IncommNotesListener.TOPIC.notesChanged()` after every change.
+  Persists on a single background thread with **merge-on-write**: it reloads the current
+  `notes.json` and folds in any notes the model doesn't know about (comments the agent added
+  concurrently) before saving atomically — so a plugin write never clobbers the agent's notes.
+  A `locallyDeleted` guard stops a just-deleted note from being resurrected by that merge.
   Key methods: `allNotes`, `notesForFile`, `hasNotesForFile`, `find`, `isEmpty`, `hasNoteOnLine`,
   `addNote`, `updateContent`, `addReply`, `updateReply`, `removeReply`, `setResolved`,
   `updatePosition`, `applySavedPositions`, `removeNote`, `removeNotesForFile`, `clearAll`,
@@ -202,13 +206,15 @@ registration): **`NotesService`** (data) and **`IncommEditorTracker`** (editor w
   `NotesFileWatcher` (external `notes.json` writes) and `IncommSourceFileWatcher` (external
   source edits for files not open). Position-only updates persist **quietly** (see §7).
   Holds two pieces of view state:
-  - `inlaysVisible` — global show/hide of all inline cards.
+  - `inlaysVisible` — the "Show/Hide All Threads" intent flag. Hiding all is implemented by
+    adding every id to `hiddenNotes` (not an absolute gate), so an individual gutter-icon
+    toggle can still reveal one thread afterwards.
   - `hiddenNotes` — set of individually collapsed thread ids (**single source of truth** for
-    "this card is hidden"; used by gutter-icon toggle, resolve-auto-hide, and the
+    "this card is hidden"; used by gutter-icon toggle, resolve-auto-hide, hide-all, and the
     hide-resolved bulk action).
   Public API used by actions/UI: `toggleInlaysVisible`, `toggleNoteHidden`, `isNoteHidden`,
   `setNoteHidden`, `setNoteResolved` (resolve **and** collapse), `hasResolvedNotes`,
-  `anyResolvedVisible`, `setResolvedHidden`, `startInlineReply`, `startInlineAdd`,
+  `anyResolvedVisible`, `setResolvedHidden`, `refreshUi`, `startInlineReply`, `startInlineAdd`,
   `startInlineEdit`, `setHoveredNote`.
 - **`NoteInlayController`** (per editor) — renders each note as an **interactive**
   `NoteCardComponent` embedded as a *component inlay* via
@@ -306,7 +312,10 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
    inside the editor has its editing keys (Enter, Backspace, ⌥←, selection, …) hijacked by the
    editor's action system, because the outer editor is the resolved `CommonDataKeys.EDITOR`.
    `EditorTextField` is a real nested editor, so it becomes the focused `EDITOR` and all editing
-   works. This was the single biggest source of "the input doesn't work" bugs.
+   works. This was the single biggest source of "the input doesn't work" bugs. **Gotcha:** an
+   `EditorTextField` reports a *one-line* preferred height even in multi-line mode, so it won't
+   grow — override `getPreferredSize()` to `lineHeight * lineCount` and re-measure the enclosing
+   block inlay (`inlay.update()`) synchronously on each document change.
 4. **Register confirm/cancel keys with `registerCustomShortcutSet`**, not Swing input maps —
    component-local IDE shortcuts win over the editor's global actions (Cmd/Ctrl+Enter = save,
    Esc = cancel; plain Enter stays a newline in the multi-line editor).
@@ -333,12 +342,15 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
    `DocumentListener` that recomputes & persists positions on every change (not just save) +
    `AsyncFileListener`s: `NotesFileWatcher` (external `notes.json` writes reload the model) and
    `IncommSourceFileWatcher` (external source edits reanchor a file's notes from disk). Reloads
-   that produce no change skip the notification (avoids self-write refresh loops). Don't add polling.
+   that produce no change skip the notification (avoids self-write refresh loops). **Every write
+   merges with the current file on disk** (`NotesService.persist` folds in notes the model lacks)
+   so the plugin never clobbers comments the agent added concurrently. Don't add polling.
 8. **Focus:** request focus for embedded inputs via `IdeFocusManager` once the component is
    showing (a `HierarchyListener` on `SHOWING_CHANGED`), not eagerly.
-9. **Colours & keys convention:** every colour comes from the active theme via `IncommColors`
-   (user/open blue, agent/resolved green, orphaned red) — never hard-code a colour. No default
-   shortcuts.
+9. **Colours & keys convention:** user/open = blue, agent/resolved = green, orphaned = red.
+   Colours are user-overridable in *Settings | Tools | Incomm* (`settings/IncommSettings`); read
+   them through `IncommColors` (which resolves override-or-theme) — never hard-code a colour. No
+   default shortcuts.
 10. **Schema parity is sacred.** Any change to the JSON shape or anchoring must land in *both*
     `Anchoring.kt`/`model` **and** `internal/anchor`/`model`, keep §11 in sync, and pass
     the shared `fixtures/`.
@@ -348,8 +360,9 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
 ## 8. Tests
 
 - **Plugin** (`plugin/src/test/kotlin/dev/incomm/`): `AnchoringTest` (parity vs fixtures),
-  `NotesStoreTest`, `NotesServiceTest`, `EditorIntegrationTest` (gutter icons, inline cards,
-  compose/reply/add/edit inlays, per-thread & resolved hide/show, caret gutter band). Run:
+  `NotesStoreTest`, `NotesServiceTest` (incl. merge-on-write: external agent note survives a
+  plugin write, local delete isn't resurrected), `EditorIntegrationTest` (gutter icons, inline
+  cards, compose/reply/add/edit inlays, per-thread & resolved hide/show, caret gutter band). Run:
   `JAVA_HOME=$(/usr/libexec/java_home -v 21) ./gradlew :plugin:test`.
 - **CLI** (`cli/**/*_test.go`): `anchor`, `model`, `store`, and `cmd` (`skill`, `anchor set/recompute`).
   Run: `go test ./...`.
@@ -378,8 +391,8 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
 ## 10. Notes
 
 - Add `.incomm/` to your project's `.gitignore` unless you want to commit review state.
-- The plugin and CLI can both write concurrently; writes are atomic and last-write-wins,
-  reconciled by the plugin's file watcher.
+- The plugin and CLI can both write concurrently; writes are atomic and the plugin merges on
+  write (never clobbering the agent's added notes), reconciled by the plugin's file watcher.
 
 ---
 
@@ -560,5 +573,8 @@ The file may be written by both the plugin and the CLI (agent). Writers MUST use
 an **atomic write**: write to a temp file in `.incomm/` and `rename()` over
 `notes.json`. The plugin watches the file and reloads on external change (a
 reload that yields no change is a no-op, so the plugin's own writes don't cause
-refresh loops). The model is intentionally simple: **last write wins**,
-reconciled by reload.
+refresh loops). To keep concurrent writers from stepping on each other, the
+plugin uses **merge-on-write**: before saving it reloads the current file and
+folds in any notes it doesn't yet know about, so it never deletes comments the
+agent added while the plugin's model was stale. Within a single note the model
+is still **last write wins**, reconciled by reload.

@@ -31,7 +31,7 @@ class IncommConfigurable : Configurable {
     private val statusFg = ColorPanel()
     private val dateCombo = ComboBox(DateStyle.entries.toTypedArray())
     private val maxWidthSpinner = javax.swing.JSpinner(
-        javax.swing.SpinnerNumberModel(120, 0, 500, 10)
+        javax.swing.SpinnerNumberModel(100, 0, 500, 10)
     )
 
     override fun getDisplayName(): String = "Incomm"
@@ -115,7 +115,7 @@ class IncommConfigurable : Configurable {
         commentFg.selectedColor = IncommColors.themeCommentFg()
         statusFg.selectedColor = IncommColors.themeStatusFg()
         dateCombo.selectedItem = DateStyle.RELATIVE
-        maxWidthSpinner.value = 120
+        maxWidthSpinner.value = 100
     }
 
     /** The RGB override for a picker, or null when it matches the theme default. */

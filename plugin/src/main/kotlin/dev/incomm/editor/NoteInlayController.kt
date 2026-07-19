@@ -198,6 +198,12 @@ class NoteInlayController(
             background = editor.colorsScheme.defaultBackground
             layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
             border = JBUI.Borders.emptyLeft(indentPx)
+            // When indented, remove the card's own left padding so it aligns
+            // precisely with the code's first non-whitespace character.
+            if (indentPx > 0) {
+                val b = card.border?.getBorderInsets(card)
+                if (b != null) card.border = JBUI.Borders.empty(b.top, 0, b.bottom, b.right)
+            }
             card.alignmentX = java.awt.Component.LEFT_ALIGNMENT
             card.maximumSize = Dimension(maxPx, Int.MAX_VALUE)
             add(card)

@@ -1,6 +1,7 @@
 package dev.incomm.editor
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationActivationListener
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.components.Service
@@ -195,9 +196,56 @@ class IncommEditorTracker(private val project: Project) : Disposable {
         VirtualFileManager.getInstance()
             .addAsyncFileListener(IncommSourceFileWatcher(project) { rel -> rel in openRels }, this)
 
+        // Ensure the native file watcher actually watches `.incomm/` so external
+        // CLI writes fire VFS events (the dir is often gitignored / outside a
+        // content root, so it isn't watched by default).
+        registerIncommWatchRoot()
+
+        // When the IDE regains focus, re-sync `.incomm/` from disk and reload.
+        // This is the reliable moment to pick up external changes the VFS may
+        // have missed — e.g. `incomm clear` deletes the dir and `incomm add`
+        // recreates it, which leaves the VFS view stale until a refresh.
+        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+            ApplicationActivationListener.TOPIC,
+            object : ApplicationActivationListener {
+                override fun applicationActivated(ideFrame: com.intellij.openapi.wm.IdeFrame) {
+                    syncIncommFromDisk()
+                }
+            },
+        )
+
         // Attach to editors that are already open (e.g. restored on project load).
         for (editor in factory.allEditors) {
             if (editor.project == project) onEditorCreated(editor)
+        }
+    }
+
+    /** Register `.incomm/` (and its parent) with the native watcher. */
+    private fun registerIncommWatchRoot() {
+        val incommDir = NotesService.getInstance(project).notesPath()?.parent ?: return
+        // Watch recursively; the request is disposed with the tracker. Watching a
+        // not-yet-existing path is fine — it takes effect once the dir appears.
+        com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+            .addRootToWatch(incommDir.toString().replace('\\', '/'), true)
+    }
+
+    /**
+     * Force a VFS refresh of `.incomm/` from disk and reload the model. Handles
+     * the case where the directory was deleted and recreated externally (which
+     * leaves the VFS view stale), so external `incomm clear`/`add` show up.
+     */
+    private fun syncIncommFromDisk() {
+        if (project.isDisposed) return
+        ApplicationManager.getApplication().executeOnPooledThread {
+            if (project.isDisposed) return@executeOnPooledThread
+            val notesPath = NotesService.getInstance(project).notesPath() ?: return@executeOnPooledThread
+            val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+            // Refresh the parent (project base) so a recreated `.incomm/` dir is
+            // discovered, then the dir and the notes file themselves.
+            notesPath.parent?.parent?.let { lfs.refreshAndFindFileByNioFile(it) }
+            notesPath.parent?.let { lfs.refreshAndFindFileByNioFile(it) }
+            lfs.refreshAndFindFileByNioFile(notesPath)
+            if (!project.isDisposed) NotesService.getInstance(project).reload()
         }
     }
 

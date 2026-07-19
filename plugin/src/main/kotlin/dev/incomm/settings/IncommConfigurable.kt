@@ -30,6 +30,9 @@ class IncommConfigurable : Configurable {
     private val commentFg = ColorPanel()
     private val statusFg = ColorPanel()
     private val dateCombo = ComboBox(DateStyle.entries.toTypedArray())
+    private val maxWidthSpinner = javax.swing.JSpinner(
+        javax.swing.SpinnerNumberModel(120, 0, 500, 10)
+    )
 
     override fun getDisplayName(): String = "Incomm"
 
@@ -57,6 +60,9 @@ class IncommConfigurable : Configurable {
             .addLabeledComponent("Date / status colour:", statusFg)
             .addSeparator()
             .addLabeledComponent("Timestamp format:", dateCombo)
+            .addSeparator()
+            .addComponent(JBLabel("<html><b>Layout</b></html>"))
+            .addLabeledComponent("Max inline card width (chars, 0 = unlimited):", maxWidthSpinner)
             .addComponent(restore)
             .addComponentFillVertically(JPanel(), 0)
             .panel
@@ -72,7 +78,8 @@ class IncommConfigurable : Configurable {
             overrideOf(agentNameFg, IncommColors.themeAgentName()) != s.agentNameFg ||
             overrideOf(commentFg, IncommColors.themeCommentFg()) != s.commentFg ||
             overrideOf(statusFg, IncommColors.themeStatusFg()) != s.statusFg ||
-            (dateCombo.selectedItem as DateStyle) != s.dateStyle
+            (dateCombo.selectedItem as DateStyle) != s.dateStyle ||
+            (maxWidthSpinner.value as Int) != s.maxCardWidthChars
     }
 
     override fun apply() {
@@ -84,6 +91,7 @@ class IncommConfigurable : Configurable {
         s.commentFg = overrideOf(commentFg, IncommColors.themeCommentFg())
         s.statusFg = overrideOf(statusFg, IncommColors.themeStatusFg())
         s.dateStyle = dateCombo.selectedItem as DateStyle
+        s.maxCardWidthChars = maxWidthSpinner.value as Int
         refreshOpenEditors()
     }
 
@@ -96,6 +104,7 @@ class IncommConfigurable : Configurable {
         commentFg.selectedColor = s.commentFg?.let(::Color) ?: IncommColors.themeCommentFg()
         statusFg.selectedColor = s.statusFg?.let(::Color) ?: IncommColors.themeStatusFg()
         dateCombo.selectedItem = s.dateStyle
+        maxWidthSpinner.value = s.maxCardWidthChars
     }
 
     private fun loadDefaults() {
@@ -106,6 +115,7 @@ class IncommConfigurable : Configurable {
         commentFg.selectedColor = IncommColors.themeCommentFg()
         statusFg.selectedColor = IncommColors.themeStatusFg()
         dateCombo.selectedItem = DateStyle.RELATIVE
+        maxWidthSpinner.value = 120
     }
 
     /** The RGB override for a picker, or null when it matches the theme default. */

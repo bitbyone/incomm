@@ -23,11 +23,13 @@ import com.intellij.util.ui.JBUI
 import dev.incomm.anchor.Anchoring
 import dev.incomm.model.AUTHOR_USER
 import dev.incomm.model.Note
+import dev.incomm.settings.IncommSettings
 import dev.incomm.store.NotesService
 import dev.incomm.ui.IncommIcons
 import dev.incomm.ui.NoteCardComponent
 import dev.incomm.ui.ThreadUi
 import java.awt.BorderLayout
+import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Rectangle
 import java.awt.event.ComponentAdapter
@@ -181,10 +183,24 @@ class NoteInlayController(
             },
             onContentResized = { cards[note.id]?.inlay?.let { resizeInlay(it) } },
         )
+
+        // Compute indent: align with the first non-whitespace char of the line.
+        val indentPx = computeIndentPx(startLine0)
+
+        // Compute max width from settings (in editor-font characters).
+        val maxChars = IncommSettings.getInstance().data.maxCardWidthChars
+        val font = ex.colorsScheme.getFont(com.intellij.openapi.editor.colors.EditorFontType.PLAIN)
+        val charWidth = editor.contentComponent.getFontMetrics(font).charWidth('m')
+        val maxPx = if (maxChars > 0) maxChars * charWidth else Int.MAX_VALUE
+
         val host = noScrollHost().apply {
             isOpaque = true
             background = editor.colorsScheme.defaultBackground
-            add(card, BorderLayout.CENTER)
+            layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
+            border = JBUI.Borders.emptyLeft(indentPx)
+            card.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+            card.maximumSize = Dimension(maxPx, Int.MAX_VALUE)
+            add(card)
         }
         val props = EditorEmbeddedComponentManager.Properties(
             EditorEmbeddedComponentManager.ResizePolicy.none(),
@@ -198,6 +214,25 @@ class NoteInlayController(
         )
         EditorEmbeddedComponentManager.getInstance().addComponent(ex, host, props)
             ?.let { cards[note.id] = CardEntry(it, card) }
+    }
+
+    /**
+     * Pixel indent from the content area's left edge to the first non-whitespace
+     * character on [line0]. Handles tabs and variable-width (unlikely in monospace
+     * editors, but safe).
+     */
+    private fun computeIndentPx(line0: Int): Int {
+        val doc = editor.document
+        if (line0 >= doc.lineCount) return 0
+        val lineStart = doc.getLineStartOffset(line0)
+        val lineEnd = doc.getLineEndOffset(line0)
+        val text = doc.charsSequence
+        var i = lineStart
+        while (i < lineEnd && text[i].isWhitespace()) i++
+        if (i == lineEnd) return 0 // blank line — no indent
+        val firstNonWsX = editor.offsetToXY(i).x.toInt()
+        val lineStartX = editor.offsetToXY(lineStart).x.toInt()
+        return (firstNonWsX - lineStartX).coerceAtLeast(0)
     }
 
     /** Resolve/reopen a thread; resolving also collapses (hides) its card. */

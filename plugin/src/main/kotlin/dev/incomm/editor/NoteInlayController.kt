@@ -361,6 +361,9 @@ class NoteInlayController(
             }
             // Swap the composer for the resulting card while pinning the note's
             // line to a fixed viewport position, so the page doesn't scroll away.
+            // Also pin the async notes-changed refresh to the same line so it
+            // doesn't re-anchor to the top and undo us.
+            IncommEditorTracker.getInstance(project).pinNextRefreshScroll(editor, offset)
             keepScrollAtOffset(offset) {
                 disposeCompose()
                 val created = onSave(text)

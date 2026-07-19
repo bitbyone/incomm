@@ -208,9 +208,13 @@ class NoteInlayController(
             background = editor.colorsScheme.defaultBackground
             layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
             border = JBUI.Borders.emptyLeft(indentPx)
-            card.alignmentX = java.awt.Component.LEFT_ALIGNMENT
-            card.maximumSize = Dimension(maxPx, Int.MAX_VALUE)
-            add(card)
+            // Wrap the card so it reports its *wrapped* height at the capped width.
+            // Without this, BoxLayout uses the card's unwrapped (1-line) preferred
+            // height; the real (taller) height only settled on a later layout pass,
+            // and that late growth of off-screen cards during a rebuild is what made
+            // the viewport jump on the 2nd+ comment. The wrapper measures on demand
+            // and never fixes the card's own size, so editing still expands it.
+            add(WidthCappedCard(card, maxPx))
         }
         val props = EditorEmbeddedComponentManager.Properties(
             EditorEmbeddedComponentManager.ResizePolicy.none(),
@@ -224,6 +228,51 @@ class NoteInlayController(
         )
         EditorEmbeddedComponentManager.getInstance().addComponent(ex, host, props)
             ?.let { cards[note.id] = CardEntry(it, card) }
+    }
+
+    /**
+     * Wraps a card and reports its **wrapped** height at the capped width so a
+     * BoxLayout stacks it with the correct height immediately (no late growth →
+     * no viewport jump). It measures on demand and never mutates the card's own
+     * preferred/maximum size, so switching to edit mode or adding a reply still
+     * expands the card naturally.
+     */
+    private inner class WidthCappedCard(
+        private val card: javax.swing.JComponent,
+        private val maxPx: Int,
+    ) : JPanel(BorderLayout()) {
+        init {
+            isOpaque = false
+            alignmentX = java.awt.Component.LEFT_ALIGNMENT
+            add(card, BorderLayout.CENTER)
+        }
+
+        private fun targetWidth(): Int = if (maxPx == Int.MAX_VALUE) {
+            val avail = editor.contentComponent.width
+            if (avail > 0) avail else 900
+        } else {
+            maxPx
+        }
+
+        override fun getPreferredSize(): Dimension {
+            val w = targetWidth()
+            // Force the card to lay out at the capped width so nested wrapping
+            // text reports its true height, then read it back.
+            card.setSize(w, Int.MAX_VALUE / 2)
+            layoutDeep(card)
+            return Dimension(w, card.preferredSize.height.coerceAtLeast(1))
+        }
+
+        override fun getMaximumSize(): Dimension = preferredSize
+        override fun getMinimumSize(): Dimension = preferredSize
+    }
+
+    /** Recursively lay out a container so nested wrapping text reports true height. */
+    private fun layoutDeep(c: java.awt.Container) {
+        c.doLayout()
+        for (child in c.components) {
+            if (child is java.awt.Container) layoutDeep(child)
+        }
     }
 
     /**
@@ -314,11 +363,22 @@ class NoteInlayController(
         }
         card.add(header, BorderLayout.NORTH)
         card.add(field, BorderLayout.CENTER)
+        // Cap the composer width and indent it, same as the display cards. Safe
+        // for scroll: the composer's height is line-based (not width-wrapped),
+        // so capping the width doesn't change its height.
+        val indentPx = computeIndentPx(anchor0)
+        val maxChars = IncommSettings.getInstance().data.maxCardWidthChars
+        val font = ex.colorsScheme.getFont(com.intellij.openapi.editor.colors.EditorFontType.PLAIN)
+        val charWidth = editor.contentComponent.getFontMetrics(font).charWidth('m')
+        val maxPx = if (maxChars > 0) maxChars * charWidth else Int.MAX_VALUE
         val host = noScrollHost().apply {
             isOpaque = true
             background = editor.colorsScheme.defaultBackground
-            border = JBUI.Borders.empty(1, 8, 5, 10)
-            add(card, BorderLayout.CENTER)
+            layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
+            border = JBUI.Borders.empty(1, 8 + indentPx, 5, 10)
+            card.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+            card.maximumSize = Dimension(maxPx, Int.MAX_VALUE)
+            add(card)
         }
 
         fun save() {

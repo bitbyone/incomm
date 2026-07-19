@@ -11,6 +11,7 @@ import com.intellij.openapi.editor.Inlay
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.ex.EditorEx
+import com.intellij.openapi.editor.ex.util.EditorScrollingPositionKeeper
 import com.intellij.openapi.editor.impl.EditorEmbeddedComponentManager
 import com.intellij.openapi.fileTypes.FileTypes
 import com.intellij.openapi.project.DumbAwareAction
@@ -84,35 +85,22 @@ class NoteInlayController(
 
     private fun rebuild() = keepScroll { rebuildInlays() }
 
-    /**
-     * Keep the editor's viewport exactly where it is while inlays are added or
-     * removed. We simply preserve the raw pixel scroll offset — the editor is
-     * already at the right position before the change, so we just don't let it
-     * move. (An `EditorScrollingPositionKeeper` anchors to a logical line/caret,
-     * which during compose is the *compose* editor's caret, not the note line —
-     * that mis-anchoring is what made the page jump, worse the deeper you were.)
-     */
+    /** Keep the editor's viewport fixed while inlays are added/removed. */
     private fun keepScroll(block: () -> Unit) {
         if (editor.isDisposed) {
             block()
             return
         }
-        val sm = editor.scrollingModel
-        val saved = sm.verticalScrollOffset
+        val keeper = EditorScrollingPositionKeeper(editor)
+        keeper.savePosition()
         block()
-        fun restore() {
-            if (editor.isDisposed || sm.verticalScrollOffset == saved) return
-            sm.disableAnimation()
-            try {
-                sm.scrollVertically(saved)
-            } finally {
-                sm.enableAnimation()
-            }
-        }
-        restore()
-        // Re-assert after the async layout settle (and after the notes-changed
-        // refresh runs), so nothing nudges the viewport away.
-        ApplicationManager.getApplication().invokeLater({ restore() }, ModalityState.any())
+        keeper.restorePosition(false)
+        // Embedded components get their real height only after layout settles, so
+        // restore again once that happened, then drop the anchor.
+        ApplicationManager.getApplication().invokeLater({
+            if (!editor.isDisposed) keeper.restorePosition(false)
+            keeper.dispose()
+        }, ModalityState.any())
     }
 
     /**
@@ -193,14 +181,17 @@ class NoteInlayController(
                 IncommEditorTracker.getInstance(project)
                     .setHoveredNote(editor, if (hovered) note.id else null)
             },
-            onContentResized = { onCardResized(note.id) },
+            onContentResized = { cards[note.id]?.inlay?.let { resizeInlay(it) } },
         )
 
         // Compute indent: align with the first non-whitespace char of the line.
         val indentPx = computeIndentPx(startLine0)
-        // Size the card to its capped width with a *measured* height, so the
-        // block inlay gets the correct height immediately (no late growth/jump).
-        sizeCard(card, indentPx)
+
+        // Compute max width from settings (in editor-font characters).
+        val maxChars = IncommSettings.getInstance().data.maxCardWidthChars
+        val font = ex.colorsScheme.getFont(com.intellij.openapi.editor.colors.EditorFontType.PLAIN)
+        val charWidth = editor.contentComponent.getFontMetrics(font).charWidth('m')
+        val maxPx = if (maxChars > 0) maxChars * charWidth else Int.MAX_VALUE
 
         val host = noScrollHost().apply {
             isOpaque = true
@@ -208,6 +199,7 @@ class NoteInlayController(
             layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
             border = JBUI.Borders.emptyLeft(indentPx)
             card.alignmentX = java.awt.Component.LEFT_ALIGNMENT
+            card.maximumSize = Dimension(maxPx, Int.MAX_VALUE)
             add(card)
         }
         val props = EditorEmbeddedComponentManager.Properties(
@@ -241,66 +233,6 @@ class NoteInlayController(
         val firstNonWsX = editor.offsetToXY(i).x.toInt()
         val lineStartX = editor.offsetToXY(lineStart).x.toInt()
         return (firstNonWsX - lineStartX).coerceAtLeast(0)
-    }
-
-    /**
-     * Size [card] to its capped render width with a **measured** height. The card
-     * wraps its text at the capped width, so its real height is only known after a
-     * layout at that width — we force one here and pin the card's preferred/maximum
-     * size to the result. This gives the block inlay its correct height at creation
-     * time, so it never grows on a later layout pass (which was causing the
-     * viewport to jump after saving a comment).
-     */
-    private fun sizeCard(card: javax.swing.JComponent, indentPx: Int) {
-        val cardWidth = cappedCardWidth(indentPx)
-        // Reset any previous fixed size so the measurement reflects current content.
-        card.preferredSize = null
-        card.maximumSize = null
-        card.setSize(cardWidth, 100_000)
-        layoutDeep(card)
-        val h = card.preferredSize.height.coerceAtLeast(1)
-        val fixed = Dimension(cardWidth, h)
-        card.preferredSize = fixed
-        card.maximumSize = fixed
-    }
-
-    /** The pixel width a card renders at: min(maxWidthSetting, editorWidth - indent). */
-    private fun cappedCardWidth(indentPx: Int): Int {
-        val ex = editor as? EditorEx
-        val maxChars = IncommSettings.getInstance().data.maxCardWidthChars
-        val avail = editor.contentComponent.width
-        val maxPx = if (maxChars > 0 && ex != null) {
-            val font = ex.colorsScheme.getFont(com.intellij.openapi.editor.colors.EditorFontType.PLAIN)
-            maxChars * editor.contentComponent.getFontMetrics(font).charWidth('m')
-        } else {
-            Int.MAX_VALUE
-        }
-        val width = when {
-            avail <= 0 && maxPx == Int.MAX_VALUE -> 900 // fallback before first layout
-            avail <= 0 -> maxPx
-            maxPx == Int.MAX_VALUE -> avail - indentPx
-            else -> minOf(maxPx, avail - indentPx)
-        }
-        return width.coerceAtLeast(120)
-    }
-
-    /** Recursively lay out a container so nested wrapping text reports true height. */
-    private fun layoutDeep(c: java.awt.Container) {
-        c.doLayout()
-        for (child in c.components) {
-            if (child is java.awt.Container) layoutDeep(child)
-        }
-    }
-
-    /** Re-measure a card after its content changed (edit/reply), then update the inlay. */
-    private fun onCardResized(noteId: String) {
-        val entry = cards[noteId] ?: return
-        val note = NotesService.getInstance(project).find(noteId) ?: return
-        val doc = editor.document
-        if (doc.lineCount == 0) return
-        val startLine0 = (note.displayStartLine() - 1).coerceIn(0, doc.lineCount - 1)
-        sizeCard(entry.card, computeIndentPx(startLine0))
-        if (entry.inlay.isValid) resizeInlay(entry.inlay)
     }
 
     /** Resolve/reopen a thread; resolving also collapses (hides) its card. */
@@ -372,23 +304,11 @@ class NoteInlayController(
         }
         card.add(header, BorderLayout.NORTH)
         card.add(field, BorderLayout.CENTER)
-
-        // Align with the code's first non-whitespace char, and cap width — same
-        // proven BoxLayout approach as the display cards (addCard).
-        val indentPx = computeIndentPx(anchor0)
-        val maxChars = IncommSettings.getInstance().data.maxCardWidthChars
-        val font = ex.colorsScheme.getFont(com.intellij.openapi.editor.colors.EditorFontType.PLAIN)
-        val charWidth = editor.contentComponent.getFontMetrics(font).charWidth('m')
-        val maxPx = if (maxChars > 0) maxChars * charWidth else Int.MAX_VALUE
-
         val host = noScrollHost().apply {
             isOpaque = true
             background = editor.colorsScheme.defaultBackground
-            layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
-            border = JBUI.Borders.empty(1, 8 + indentPx, 5, 10)
-            card.alignmentX = java.awt.Component.LEFT_ALIGNMENT
-            card.maximumSize = Dimension(maxPx, Int.MAX_VALUE)
-            add(card)
+            border = JBUI.Borders.empty(1, 8, 5, 10)
+            add(card, BorderLayout.CENTER)
         }
 
         fun save() {

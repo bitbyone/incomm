@@ -23,7 +23,6 @@ import com.intellij.util.ui.JBUI
 import dev.incomm.anchor.Anchoring
 import dev.incomm.model.AUTHOR_USER
 import dev.incomm.model.Note
-import dev.incomm.settings.IncommSettings
 import dev.incomm.store.NotesService
 import dev.incomm.ui.IncommIcons
 import dev.incomm.ui.NoteCardComponent
@@ -182,22 +181,9 @@ class NoteInlayController(
             },
             onContentResized = { cards[note.id]?.inlay?.let { resizeInlay(it) } },
         )
-
-        // Compute indent: align with the first non-whitespace char of the line.
-        val indentPx = computeIndentPx(startLine0)
-        // When indented, strip card's own left padding for precise alignment.
-        if (indentPx > 0) {
-            val b = card.border?.getBorderInsets(card)
-            if (b != null) card.border = JBUI.Borders.empty(b.top, 0, b.bottom, b.right)
-        }
-        // Compute right padding to enforce max width via border (card still fills
-        // available width via CENTER, so height calculation stays stable).
-        val rightPad = computeRightPad(indentPx)
-
         val host = noScrollHost().apply {
             isOpaque = true
             background = editor.colorsScheme.defaultBackground
-            border = JBUI.Borders.empty(0, indentPx, 0, rightPad)
             add(card, BorderLayout.CENTER)
         }
         val props = EditorEmbeddedComponentManager.Properties(
@@ -212,42 +198,6 @@ class NoteInlayController(
         )
         EditorEmbeddedComponentManager.getInstance().addComponent(ex, host, props)
             ?.let { cards[note.id] = CardEntry(it, card) }
-    }
-
-    /**
-     * Pixel indent from the content area's left edge to the first non-whitespace
-     * character on [line0]. Handles tabs correctly via offsetToXY.
-     */
-    private fun computeIndentPx(line0: Int): Int {
-        val doc = editor.document
-        if (line0 >= doc.lineCount) return 0
-        val lineStart = doc.getLineStartOffset(line0)
-        val lineEnd = doc.getLineEndOffset(line0)
-        val text = doc.charsSequence
-        var i = lineStart
-        while (i < lineEnd && text[i].isWhitespace()) i++
-        if (i == lineEnd) return 0 // blank line — no indent
-        val firstNonWsX = editor.offsetToXY(i).x.toInt()
-        val lineStartX = editor.offsetToXY(lineStart).x.toInt()
-        return (firstNonWsX - lineStartX).coerceAtLeast(0)
-    }
-
-    /**
-     * Compute a right padding (in pixels) that, together with [indentPx] on the
-     * left, constrains the card to the configured max width. The card stays in
-     * [BorderLayout.CENTER] (fills available width) so height calculation remains
-     * stable — the right border simply eats the excess space.
-     */
-    private fun computeRightPad(indentPx: Int): Int {
-        val maxChars = IncommSettings.getInstance().data.maxCardWidthChars
-        if (maxChars <= 0) return 0
-        val ex = editor as? EditorEx ?: return 0
-        val font = ex.colorsScheme.getFont(com.intellij.openapi.editor.colors.EditorFontType.PLAIN)
-        val charWidth = editor.contentComponent.getFontMetrics(font).charWidth('m')
-        val maxPx = maxChars * charWidth
-        val editorWidth = editor.contentComponent.width
-        if (editorWidth <= 0) return 0 // not yet laid out
-        return (editorWidth - indentPx - maxPx).coerceAtLeast(0)
     }
 
     /** Resolve/reopen a thread; resolving also collapses (hides) its card. */
@@ -306,9 +256,6 @@ class NoteInlayController(
         val anchor0 = (anchorLine - 1).coerceIn(0, doc.lineCount - 1)
         val offset = doc.getLineStartOffset(anchor0)
 
-        val indentPx = computeIndentPx(anchor0)
-        val rightPad = computeRightPad(indentPx)
-
         val field = composeField()
         val icons = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
         val header = JPanel(BorderLayout()).apply {
@@ -318,14 +265,14 @@ class NoteInlayController(
         }
         val card = ThreadUi.RoundedPanel(ThreadUi.USER_BG).apply {
             layout = BorderLayout(0, 6)
-            border = if (indentPx > 0) JBUI.Borders.empty(5, 0, 6, 8) else JBUI.Borders.empty(5, 12, 6, 8)
+            border = JBUI.Borders.empty(5, 12, 6, 8)
         }
         card.add(header, BorderLayout.NORTH)
         card.add(field, BorderLayout.CENTER)
         val host = noScrollHost().apply {
             isOpaque = true
             background = editor.colorsScheme.defaultBackground
-            border = JBUI.Borders.empty(0, indentPx, 0, rightPad)
+            border = JBUI.Borders.empty(1, 8, 5, 10)
             add(card, BorderLayout.CENTER)
         }
 

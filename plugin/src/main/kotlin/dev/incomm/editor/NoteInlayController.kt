@@ -333,7 +333,9 @@ class NoteInlayController(
         val note = NotesService.getInstance(project).find(noteId) ?: return
         startCompose(note.startLine, "new reply") { text ->
             NotesService.getInstance(project).addReply(noteId, text, AUTHOR_USER)
-            null
+            // Return the updated parent note so save() re-renders its card in
+            // place (with the new reply nested) — no full refresh, no jump.
+            NotesService.getInstance(project).find(noteId)
         }
     }
 
@@ -351,10 +353,10 @@ class NoteInlayController(
 
     /**
      * Shared inline composer used by both add and reply. [onSave] performs the
-     * model mutation and returns the newly created [Note] (for a brand-new
-     * comment) or null (for a reply); the returned note's card is added in the
-     * same scroll-kept pass that removes the composer, so a new comment never
-     * makes the editor jump.
+     * model mutation and returns the affected [Note] — the new note for an add,
+     * or the updated parent note for a reply. Its card is (re-)rendered in place
+     * in the same scroll-kept pass that removes the composer, so neither an add
+     * nor a reply makes the editor jump.
      */
     private fun startCompose(anchorLine: Int, subtitle: String, onSave: (String) -> Note?) {
         val ex = editor as? EditorEx ?: return
@@ -406,13 +408,18 @@ class NoteInlayController(
             // pass — exactly like the compose block appeared, so no jump. The
             // note's own onSave publishes notesChanged, which would trigger a
             // full inline-card rebuild here; skip that one redundant rebuild
-            // (the card is already rendered) so the viewport doesn't churn.
+            // (we render the card in place) so the viewport doesn't churn.
             keepScroll {
                 disposeCompose()
-                val created = onSave(text)
-                if (created != null && created.file == rel) {
+                val note = onSave(text)
+                if (note != null && note.file == rel) {
                     skipNextRebuild = true
-                    addCard(created)
+                    // Reply: the parent card already exists — drop its old inlay
+                    // and re-add it (now containing the reply). Add: no existing
+                    // card, so this just renders the new one. Either way it lands
+                    // in place, nested correctly, without a full refresh.
+                    cards.remove(note.id)?.let { if (it.inlay.isValid) Disposer.dispose(it.inlay) }
+                    addCard(note)
                 }
             }
         }

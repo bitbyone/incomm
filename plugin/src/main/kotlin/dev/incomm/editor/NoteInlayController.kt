@@ -104,36 +104,6 @@ class NoteInlayController(
     }
 
     /**
-     * Keep a specific document [offset]'s line pinned at the same viewport-Y
-     * across [block] and the subsequent async layout settle. Unlike
-     * [keepScroll] (which anchors to the top visible line), this pins the exact
-     * line the user is looking at — used on save, where the compose→card swap
-     * above the note line would otherwise push that line off-screen.
-     */
-    private fun keepScrollAtOffset(offset: Int, block: () -> Unit) {
-        if (editor.isDisposed) {
-            block()
-            return
-        }
-        val sm = editor.scrollingModel
-        val safe = offset.coerceIn(0, editor.document.textLength)
-        val relY = editor.offsetToXY(safe).y - sm.verticalScrollOffset
-        block()
-        fun restore() {
-            if (editor.isDisposed) return
-            val target = (editor.offsetToXY(safe).y - relY).coerceAtLeast(0)
-            sm.disableAnimation()
-            try {
-                sm.scrollVertically(target)
-            } finally {
-                sm.enableAnimation()
-            }
-        }
-        restore()
-        ApplicationManager.getApplication().invokeLater({ restore() }, ModalityState.any())
-    }
-
-    /**
      * Host panel for an embedded card/composer that never asks the code editor
      * to scroll it into view (so focusing an inner field doesn't move the page).
      */
@@ -211,17 +181,14 @@ class NoteInlayController(
                 IncommEditorTracker.getInstance(project)
                     .setHoveredNote(editor, if (hovered) note.id else null)
             },
-            onContentResized = { cards[note.id]?.inlay?.let { resizeInlay(it) } },
+            onContentResized = { onCardResized(note.id) },
         )
 
         // Compute indent: align with the first non-whitespace char of the line.
         val indentPx = computeIndentPx(startLine0)
-
-        // Compute max width from settings (in editor-font characters).
-        val maxChars = IncommSettings.getInstance().data.maxCardWidthChars
-        val font = ex.colorsScheme.getFont(com.intellij.openapi.editor.colors.EditorFontType.PLAIN)
-        val charWidth = editor.contentComponent.getFontMetrics(font).charWidth('m')
-        val maxPx = if (maxChars > 0) maxChars * charWidth else Int.MAX_VALUE
+        // Size the card to its capped width with a *measured* height, so the
+        // block inlay gets the correct height immediately (no late growth/jump).
+        sizeCard(card, indentPx)
 
         val host = noScrollHost().apply {
             isOpaque = true
@@ -229,7 +196,6 @@ class NoteInlayController(
             layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
             border = JBUI.Borders.emptyLeft(indentPx)
             card.alignmentX = java.awt.Component.LEFT_ALIGNMENT
-            card.maximumSize = Dimension(maxPx, Int.MAX_VALUE)
             add(card)
         }
         val props = EditorEmbeddedComponentManager.Properties(
@@ -263,6 +229,66 @@ class NoteInlayController(
         val firstNonWsX = editor.offsetToXY(i).x.toInt()
         val lineStartX = editor.offsetToXY(lineStart).x.toInt()
         return (firstNonWsX - lineStartX).coerceAtLeast(0)
+    }
+
+    /**
+     * Size [card] to its capped render width with a **measured** height. The card
+     * wraps its text at the capped width, so its real height is only known after a
+     * layout at that width — we force one here and pin the card's preferred/maximum
+     * size to the result. This gives the block inlay its correct height at creation
+     * time, so it never grows on a later layout pass (which was causing the
+     * viewport to jump after saving a comment).
+     */
+    private fun sizeCard(card: javax.swing.JComponent, indentPx: Int) {
+        val cardWidth = cappedCardWidth(indentPx)
+        // Reset any previous fixed size so the measurement reflects current content.
+        card.preferredSize = null
+        card.maximumSize = null
+        card.setSize(cardWidth, 100_000)
+        layoutDeep(card)
+        val h = card.preferredSize.height.coerceAtLeast(1)
+        val fixed = Dimension(cardWidth, h)
+        card.preferredSize = fixed
+        card.maximumSize = fixed
+    }
+
+    /** The pixel width a card renders at: min(maxWidthSetting, editorWidth - indent). */
+    private fun cappedCardWidth(indentPx: Int): Int {
+        val ex = editor as? EditorEx
+        val maxChars = IncommSettings.getInstance().data.maxCardWidthChars
+        val avail = editor.contentComponent.width
+        val maxPx = if (maxChars > 0 && ex != null) {
+            val font = ex.colorsScheme.getFont(com.intellij.openapi.editor.colors.EditorFontType.PLAIN)
+            maxChars * editor.contentComponent.getFontMetrics(font).charWidth('m')
+        } else {
+            Int.MAX_VALUE
+        }
+        val width = when {
+            avail <= 0 && maxPx == Int.MAX_VALUE -> 900 // fallback before first layout
+            avail <= 0 -> maxPx
+            maxPx == Int.MAX_VALUE -> avail - indentPx
+            else -> minOf(maxPx, avail - indentPx)
+        }
+        return width.coerceAtLeast(120)
+    }
+
+    /** Recursively lay out a container so nested wrapping text reports true height. */
+    private fun layoutDeep(c: java.awt.Container) {
+        c.doLayout()
+        for (child in c.components) {
+            if (child is java.awt.Container) layoutDeep(child)
+        }
+    }
+
+    /** Re-measure a card after its content changed (edit/reply), then update the inlay. */
+    private fun onCardResized(noteId: String) {
+        val entry = cards[noteId] ?: return
+        val note = NotesService.getInstance(project).find(noteId) ?: return
+        val doc = editor.document
+        if (doc.lineCount == 0) return
+        val startLine0 = (note.displayStartLine() - 1).coerceIn(0, doc.lineCount - 1)
+        sizeCard(entry.card, computeIndentPx(startLine0))
+        if (entry.inlay.isValid) resizeInlay(entry.inlay)
     }
 
     /** Resolve/reopen a thread; resolving also collapses (hides) its card. */
@@ -359,12 +385,10 @@ class NoteInlayController(
                 closeCompose()
                 return
             }
-            // Swap the composer for the resulting card while pinning the note's
-            // line to a fixed viewport position, so the page doesn't scroll away.
-            // Also pin the async notes-changed refresh to the same line so it
-            // doesn't re-anchor to the top and undo us.
-            IncommEditorTracker.getInstance(project).pinNextRefreshScroll(editor, offset)
-            keepScrollAtOffset(offset) {
+            // Swap the composer for the resulting card in a single scroll-kept
+            // pass so the viewport doesn't jump; the async notes-changed refresh
+            // then just refreshes that card in place.
+            keepScroll {
                 disposeCompose()
                 val created = onSave(text)
                 if (created != null && created.file == rel) addCard(created)

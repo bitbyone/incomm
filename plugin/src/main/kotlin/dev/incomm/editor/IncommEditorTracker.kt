@@ -60,21 +60,6 @@ class IncommEditorTracker(private val project: Project) : Disposable {
     private var started = false
 
     /**
-     * One-shot scroll pin consulted by [refreshAll]: for the given editor, keep
-     * this document offset's line at a fixed viewport-Y instead of the default
-     * top-line anchor. Set right before a local save so the note's line (which
-     * the user is looking at) stays put even as the async rebuild changes card
-     * heights above it. Cleared after one refresh.
-     */
-    @Volatile
-    private var scrollPin: Pair<Editor, Int>? = null
-
-    /** Pin the next [refreshAll] for [editor] to keep [offset]'s line steady. */
-    fun pinNextRefreshScroll(editor: Editor, offset: Int) {
-        scrollPin = editor to offset
-    }
-
-    /**
      * Rel paths of files currently open in an editor. Maintained on the EDT but
      * read from the (background) source-file watcher, so it is a concurrent set.
      */
@@ -279,70 +264,22 @@ class IncommEditorTracker(private val project: Project) : Disposable {
         // only the rendered thread blocks move — the code never scrolls. Embedded
         // components settle their height on a later layout pass, hence the second
         // (invokeLater) restore.
-        //
-        // A one-shot [scrollPin] (set on local save) overrides the default
-        // top-line anchor for one editor: it keeps the *note's* line steady
-        // instead, so the line the user is looking at doesn't jump when a
-        // width-capped (taller) card replaces the composer above it.
-        val pin = scrollPin
-        scrollPin = null
-
-        val restores = EditorFactory.getInstance().allEditors
+        val keepers = EditorFactory.getInstance().allEditors
             .filter { it.project == project && !it.isDisposed }
-            .map { ed -> makeScrollRestore(ed, if (pin != null && pin.first === ed) pin.second else null) }
+            .map { EditorScrollingPositionKeeper(it).also { k -> k.savePosition() } }
 
         for ((document, entry) in entries) rebuild(document, entry)
         for (controller in editorControllers.values) controller.refresh()
         for (controller in inlayControllers.values) controller.refresh()
         for (controller in rangeControllers.values) controller.refresh()
 
-        for (r in restores) r.restore()
+        for (k in keepers) k.restorePosition(false)
         ApplicationManager.getApplication().invokeLater({
-            for (r in restores) {
-                if (!project.isDisposed) r.restore()
-                r.dispose()
+            for (k in keepers) {
+                if (!project.isDisposed) k.restorePosition(false)
+                k.dispose()
             }
         }, ModalityState.any())
-    }
-
-    /** A saved scroll anchor with restore + dispose, either offset- or top-line-based. */
-    private interface ScrollRestore {
-        fun restore()
-        fun dispose()
-    }
-
-    /**
-     * Build a scroll anchor for [editor]. When [pinOffset] is non-null, keep that
-     * offset's line at a fixed viewport-Y (used for the just-saved note). Otherwise
-     * fall back to the default top-line [EditorScrollingPositionKeeper].
-     */
-    private fun makeScrollRestore(editor: Editor, pinOffset: Int?): ScrollRestore {
-        if (pinOffset != null) {
-            val sm = editor.scrollingModel
-            val safe = pinOffset.coerceIn(0, editor.document.textLength)
-            val relY = editor.offsetToXY(safe).y - sm.verticalScrollOffset
-            return object : ScrollRestore {
-                override fun restore() {
-                    if (editor.isDisposed) return
-                    val target = (editor.offsetToXY(safe).y - relY).coerceAtLeast(0)
-                    sm.disableAnimation()
-                    try {
-                        sm.scrollVertically(target)
-                    } finally {
-                        sm.enableAnimation()
-                    }
-                }
-                override fun dispose() {}
-            }
-        }
-        val keeper = EditorScrollingPositionKeeper(editor)
-        keeper.savePosition()
-        return object : ScrollRestore {
-            override fun restore() {
-                if (!editor.isDisposed) keeper.restorePosition(false)
-            }
-            override fun dispose() = keeper.dispose()
-        }
     }
 
     private fun rebuild(document: Document, entry: DocEntry) {

@@ -104,6 +104,36 @@ class NoteInlayController(
     }
 
     /**
+     * Keep a specific document [offset]'s line pinned at the same viewport-Y
+     * across [block] and the subsequent async layout settle. Unlike
+     * [keepScroll] (which anchors to the top visible line), this pins the exact
+     * line the user is looking at — used on save, where the compose→card swap
+     * above the note line would otherwise push that line off-screen.
+     */
+    private fun keepScrollAtOffset(offset: Int, block: () -> Unit) {
+        if (editor.isDisposed) {
+            block()
+            return
+        }
+        val sm = editor.scrollingModel
+        val safe = offset.coerceIn(0, editor.document.textLength)
+        val relY = editor.offsetToXY(safe).y - sm.verticalScrollOffset
+        block()
+        fun restore() {
+            if (editor.isDisposed) return
+            val target = (editor.offsetToXY(safe).y - relY).coerceAtLeast(0)
+            sm.disableAnimation()
+            try {
+                sm.scrollVertically(target)
+            } finally {
+                sm.enableAnimation()
+            }
+        }
+        restore()
+        ApplicationManager.getApplication().invokeLater({ restore() }, ModalityState.any())
+    }
+
+    /**
      * Host panel for an embedded card/composer that never asks the code editor
      * to scroll it into view (so focusing an inner field doesn't move the page).
      */
@@ -329,10 +359,9 @@ class NoteInlayController(
                 closeCompose()
                 return
             }
-            // Swap the composer for the resulting card in a single scroll-kept
-            // pass so the viewport doesn't jump; the async notes-changed refresh
-            // then just refreshes that card in place.
-            keepScroll {
+            // Swap the composer for the resulting card while pinning the note's
+            // line to a fixed viewport position, so the page doesn't scroll away.
+            keepScrollAtOffset(offset) {
                 disposeCompose()
                 val created = onSave(text)
                 if (created != null && created.file == rel) addCard(created)

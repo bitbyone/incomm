@@ -70,7 +70,22 @@ class NoteInlayController(
         rebuild()
     }
 
-    fun refresh() = rebuild()
+    /**
+     * One-shot guard: a local save has already rendered the new card via
+     * [addCard] (exactly like the compose block appeared — no jump). The
+     * `notesChanged` it publishes would otherwise make [refreshAll] rebuild every
+     * inline card here, churning the layout and jumping the viewport. Skip that
+     * one redundant rebuild; the gutter icon is still added by the tracker.
+     */
+    private var skipNextRebuild = false
+
+    fun refresh() {
+        if (skipNextRebuild) {
+            skipNextRebuild = false
+            return
+        }
+        rebuild()
+    }
 
     /**
      * Update just the location header of every card in place (no inlay rebuild),
@@ -388,12 +403,17 @@ class NoteInlayController(
                 return
             }
             // Swap the composer for the resulting card in a single scroll-kept
-            // pass so the viewport doesn't jump; the async notes-changed refresh
-            // then just refreshes that card in place.
+            // pass — exactly like the compose block appeared, so no jump. The
+            // note's own onSave publishes notesChanged, which would trigger a
+            // full inline-card rebuild here; skip that one redundant rebuild
+            // (the card is already rendered) so the viewport doesn't churn.
             keepScroll {
                 disposeCompose()
                 val created = onSave(text)
-                if (created != null && created.file == rel) addCard(created)
+                if (created != null && created.file == rel) {
+                    skipNextRebuild = true
+                    addCard(created)
+                }
             }
         }
 

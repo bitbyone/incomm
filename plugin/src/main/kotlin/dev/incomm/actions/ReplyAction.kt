@@ -7,9 +7,9 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import dev.incomm.editor.IncommEditorTracker
 
 /**
- * "Incomm: Reply to Comment" — adds a new reply entry directly inside the
- * comment's inline card, in edit mode with the caret ready (check saves, Esc /
- * cancel discards it). No separate dialog.
+ * "Incomm: Reply" — adds a new reply entry directly inside the thread's inline
+ * card, in edit mode with the caret ready (check saves, Esc / cancel discards
+ * it). No separate dialog.
  */
 class ReplyAction : AnAction() {
 

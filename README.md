@@ -66,7 +66,9 @@ incomm/
   in `Anchoring.kt` (Kotlin) and `internal/anchor` (Go); the shared fixtures enforce parity.
 - **Authors & colors convention:** `user` = **blue**, `agent` = **green** throughout the
   UI; a note's state is colour-coded too (open = blue, resolved = green, orphaned = red).
-  All colours come from the active IDE theme (`ui/IncommColors.kt`) — never hard-coded.
+  All colours come from the active IDE theme (`ui/IncommColors.kt`) — never hard-coded — and
+  can be **overridden in *Settings | Tools | Incomm*** (bubble backgrounds + name colours per
+  author, comment-text and date/status colours), which also picks the **timestamp format**.
   Only `user`-authored comments are editable in place (agent comments can be
   deleted/replied-to but not edited by the human).
 - **No default keyboard shortcuts.** Every plugin action is user-assignable via
@@ -233,17 +235,21 @@ registration): **`NotesService`** (data) and **`IncommEditorTracker`** (editor w
   3 lines; multi-line → the range itself, capped at 7 lines; the note's line(s) highlighted with
   the editor's active caret-row colour), then the toolbar and bubbles. In-place edit uses
   `ThreadUi.flatEditor` (a flat `JBTextArea`).
-- **`NotesExplorerPopup`** — the two-pane fuzzy explorer (action *Incomm: Show Comments*).
+- **`NotesExplorerPopup`** — the two-pane fuzzy explorer (action *Incomm: Thread Explorer*).
   Search-Everywhere-style header: search field + **"Include orphaned"** (default **on**, toggle
   **⌘O / Ctrl+O**) and **"Include resolved"** (default off, toggle **⌘R / Ctrl+R**) checkboxes.
   Left = list (`NoteListCellRenderer`, two-line rows; orphaned rows tinted red, resolved rows
   green — both shown side by side when a note is both); right = `NoteThreadComponent`. Typing
   anywhere in the list refocuses the search (like Settings); ↑/↓ navigate, ↵ opens the file
   (caret at the first non-blank column via `IncommNavigator`).
-- **`IncommColors`** — the **single source of truth for every colour**, all resolved from the
-  active IDE theme (`JBUI.CurrentTheme.Banner` semantic palette + editor scheme); nothing is
-  hard-coded. Author/state mapping: user/open = blue (info), agent/resolved = green (success),
-  orphaned = red (error).
+- **`IncommColors`** — the **single source of truth for every colour**, resolved from the
+  active IDE theme (`JBUI.CurrentTheme.Banner` semantic palette + editor scheme) unless the
+  user overrode it in settings; nothing is hard-coded. Author/state mapping: user/open = blue
+  (info), agent/resolved = green (success), orphaned = red (error).
+- **`settings/IncommSettings`** — application-level `PersistentStateComponent` (`incomm.xml`):
+  nullable colour overrides (null = follow the theme) + the timestamp `DateStyle`; also formats
+  timestamps. **`settings/IncommConfigurable`** — the *Settings | Tools | Incomm* page (colour
+  pickers + date-format combo + "Restore theme defaults"); applying it refreshes open editors.
 - **`ThreadUi`** — shared visual language built on `IncommColors`: `roundedCard`, `flatEditor`,
   `authorLabel`, `iconButton`, helpers. Used by cards/threads/composer so they look identical.
 - **`NoteGutterIconRenderer`** — per-note gutter icon (open/resolved/orphaned). **Click toggles
@@ -256,26 +262,29 @@ registration): **`NotesService`** (data) and **`IncommEditorTracker`** (editor w
 ### 6.4 Actions — `actions/` (registered in `plugin.xml`, text in `messages/IncommBundle.properties`)
 
 Contextual (editor + gutter popup; enabled only when relevant; dynamic text where noted).
-`CaretNote.of(project, editor)` is the shared "note under the caret" lookup.
+`CaretNote.of(project, editor)` is the shared "thread under the caret" lookup.
 
 | Action id | Text | When enabled |
 |-----------|------|--------------|
-| `incomm.AddComment` | Add Comment | file present; uses selection range or caret line |
-| `incomm.Reply` | Reply to Comment | caret in a note's range |
-| `incomm.EditComment` | Edit Comment | caret in a **user**-authored note |
-| `incomm.ResolveThread` | Resolve/Reopen Comment | caret in a note (resolve also hides card) |
-| `incomm.ToggleThread` | Hide/Show Comment | caret in a note |
-| `incomm.DeleteThread` | Delete Thread | caret in a note (no confirmation) |
+| `incomm.AddComment` | Incomm: Start New Thread | file present; uses selection range or caret line |
+| `incomm.Reply` | Incomm: Reply | caret in a thread's range |
+| `incomm.EditComment` | Incomm: Edit | caret in a **user**-authored thread **with no replies** (unambiguous target) |
+| `incomm.ResolveThread` | Incomm: Resolve/Reopen Thread | caret in a thread (resolve also hides card) |
+| `incomm.ToggleThread` | Incomm: Show/Hide Thread | caret in a thread |
+| `incomm.DeleteThread` | Incomm: Delete Thread | caret in a thread (no confirmation) |
 
 Tools-menu / global:
 
 | Action id | Text | Effect |
 |-----------|------|--------|
-| `incomm.ShowComments` | Show Comments | open the explorer |
-| `incomm.ToggleNotes` | Hide/Show Notes | show/hide **all** inline cards (gutter icons stay) |
-| `incomm.ToggleResolved` | Hide/Show Resolved | show/hide **resolved** cards only |
-| `incomm.ClearFile` | Clear Comments in File | delete comments for the current file (confirm) |
-| `incomm.Clear` | Clear All Comments | delete everything (confirm) |
+| `incomm.ShowComments` | Incomm: Thread Explorer | open the explorer |
+| `incomm.ToggleNotes` | Incomm: Show/Hide All Threads | show/hide **all** inline cards (gutter icons stay) |
+| `incomm.ToggleResolved` | Incomm: Show/Hide Resolved Threads | show/hide **resolved** cards only |
+| `incomm.ClearFile` | Incomm: Clear Threads in File | delete threads for the current file (confirm) |
+| `incomm.Clear` | Incomm: Clear All Threads | delete everything (confirm) |
+
+Terminology: a **thread** is the whole envelope (`Note` in code); its original **comment**
+is what started it, followed by **replies**. Every action is prefixed `Incomm:`.
 
 ### 6.5 Startup
 
@@ -360,6 +369,7 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
 | Change the explorer | `ui/NotesExplorerPopup.kt` + `ui/NoteThreadComponent.kt` + `ui/NoteListCellRenderer.kt` |
 | Change gutter icons / "+" / range band | `ui/NoteGutterIconRenderer.kt`, `ui/AddPlusGutterIconRenderer.kt`, `editor/AddGutterController.kt`, `editor/NoteRangeHighlighter.kt` |
 | Change any colour | `ui/IncommColors.kt` only (theme-derived; never hard-code elsewhere) |
+| Change user-facing colours / date format | `settings/IncommSettings.kt` + `settings/IncommConfigurable.kt` |
 | Change data/persistence | `store/NotesService.kt`, `store/NotesStore.kt` |
 | Change what the agent skill says | `cli/cmd/skill.go` (`skillMarkdown` const) |
 

@@ -47,6 +47,7 @@ class NoteCardComponent(
     private val onReply: () -> Unit,
     private val onResolve: (Boolean) -> Unit,
     private val onHover: (Boolean) -> Unit,
+    private val onContentResized: () -> Unit = {},
 ) : JPanel(BorderLayout()) {
 
     private val titleLabel = com.intellij.ui.components.JBLabel()
@@ -155,9 +156,9 @@ class NoteCardComponent(
     private fun buildToolbar(note: Note) {
         toolbar.removeAll()
         if (note.resolved) {
-            toolbar.add(ThreadUi.iconButton(AllIcons.Actions.Rollback, "Reopen") { onResolve(false) })
+            toolbar.add(ThreadUi.iconButton(AllIcons.Actions.Rollback, "Reopen thread") { onResolve(false) })
         } else {
-            toolbar.add(ThreadUi.iconButton(AllIcons.Actions.Commit, "Resolve") { onResolve(true) })
+            toolbar.add(ThreadUi.iconButton(AllIcons.Actions.Commit, "Resolve thread") { onResolve(true) })
         }
         toolbar.add(ThreadUi.iconButton(IncommIcons.REPLY, "Reply") { onReply() })
         toolbar.add(ThreadUi.iconButton(IncommIcons.DELETE_COMMENT, "Delete thread") {
@@ -217,7 +218,17 @@ class NoteCardComponent(
     }
 
     private fun editorField(text: String): EditorTextField {
-        val field = EditorTextField(text, project, FileTypes.PLAIN_TEXT)
+        // A plain EditorTextField reports a one-line preferred height even in
+        // multi-line mode, so it never grows. Size it to its actual line count.
+        val field = object : EditorTextField(text, project, FileTypes.PLAIN_TEXT) {
+            override fun getPreferredSize(): java.awt.Dimension {
+                val base = super.getPreferredSize()
+                val ed = getEditor() ?: return base
+                val lines = ed.document.lineCount.coerceAtLeast(1)
+                val h = ed.lineHeight * lines + insets.top + insets.bottom + JBUI.scale(6)
+                return java.awt.Dimension(base.width, maxOf(base.height, h))
+            }
+        }
         field.setOneLineMode(false)
         field.background = ThreadUi.USER_BG
         field.border = JBUI.Borders.empty(2)
@@ -235,6 +246,14 @@ class NoteCardComponent(
             e.setBorder(JBUI.Borders.empty())
             e.backgroundColor = ThreadUi.USER_BG
         }
+        // Let the enclosing block inlay grow as the user adds lines while editing,
+        // so the editor isn't clipped to one line.
+        field.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
+            override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) {
+                field.revalidate()
+                onContentResized()
+            }
+        })
         return field
     }
 

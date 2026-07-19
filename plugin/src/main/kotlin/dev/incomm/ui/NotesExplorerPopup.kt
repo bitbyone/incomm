@@ -40,7 +40,7 @@ object NotesExplorerPopup {
     fun show(project: Project) {
         val service = NotesService.getInstance(project)
         if (service.isEmpty()) {
-            JBPopupFactory.getInstance().createMessage("No incomm comments yet.")
+            JBPopupFactory.getInstance().createMessage("No incomm threads yet.")
                 .showCenteredInCurrentWindow(project)
             return
         }
@@ -53,12 +53,12 @@ object NotesExplorerPopup {
         val search = SearchTextField(false)
         val orphanedFilter = JBCheckBox("Include orphaned", true).apply {
             isOpaque = false
-            toolTipText = "Show orphaned comments (${if (SystemInfo.isMac) "\u2318O" else "Ctrl+O"})"
+            toolTipText = "Show orphaned threads (${if (SystemInfo.isMac) "\u2318O" else "Ctrl+O"})"
             border = JBUI.Borders.emptyLeft(8)
         }
         val resolvedFilter = JBCheckBox("Include resolved", false).apply {
             isOpaque = false
-            toolTipText = "Show resolved comments too (${if (SystemInfo.isMac) "\u2318R" else "Ctrl+R"})"
+            toolTipText = "Show resolved threads too (${if (SystemInfo.isMac) "\u2318R" else "Ctrl+R"})"
             border = JBUI.Borders.emptyLeft(8)
         }
         val rightHost = JPanel(BorderLayout())
@@ -69,7 +69,7 @@ object NotesExplorerPopup {
         fun selected(): Note? = list.selectedValue
 
         fun placeholder(): JComponent =
-            JBLabel("<html><center>Select a comment</center></html>").apply {
+            JBLabel("<html><center>Select a thread</center></html>").apply {
                 horizontalAlignment = JBLabel.CENTER
             }
 

@@ -204,16 +204,16 @@ class NoteThreadComponent(
     private fun buildToolbar(note: Note) {
         toolbar.removeAll()
         if (note.resolved) {
-            toolbar.add(iconButton(AllIcons.Actions.Rollback, "Reopen") { toggleResolve(note) })
+            toolbar.add(iconButton(AllIcons.Actions.Rollback, "Reopen thread") { toggleResolve(note) })
         } else {
-            toolbar.add(iconButton(AllIcons.Actions.Commit, "Resolve") { toggleResolve(note) })
+            toolbar.add(iconButton(AllIcons.Actions.Commit, "Resolve thread") { toggleResolve(note) })
         }
         toolbar.add(iconButton(IncommIcons.REPLY, "Reply") {
             addingReply = true
             editingKey = null
             rebuild()
         })
-        toolbar.add(iconButton(IncommIcons.DELETE_COMMENT, "Delete comment") {
+        toolbar.add(iconButton(IncommIcons.DELETE_COMMENT, "Delete thread") {
             NotesService.getInstance(project).removeNote(noteId)
             onNoteDeleted()
         })

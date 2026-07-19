@@ -6,7 +6,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import dev.incomm.ui.NotesExplorerPopup
 
 /**
- * "Incomm: Show Comments" — opens the fuzzy-finder explorer over all comments.
+ * "Incomm: Thread Explorer" — opens the fuzzy-finder explorer over all threads.
  */
 class ShowCommentsAction : AnAction() {
 

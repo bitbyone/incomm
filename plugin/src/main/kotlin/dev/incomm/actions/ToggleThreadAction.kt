@@ -7,9 +7,9 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import dev.incomm.editor.IncommEditorTracker
 
 /**
- * "Incomm: Hide/Show Comment" — collapses or reveals the inline card of the
- * comment on the caret line (its gutter icon stays). Enabled only when the caret
- * is inside a comment's line range.
+ * "Incomm: Show/Hide Thread" — collapses or reveals the inline card of the
+ * thread on the caret line (its gutter icon stays). Enabled only when the caret
+ * is inside a thread's line range.
  */
 class ToggleThreadAction : AnAction() {
 
@@ -22,7 +22,7 @@ class ToggleThreadAction : AnAction() {
         e.presentation.isEnabledAndVisible = note != null
         if (note != null && project != null) {
             val hidden = IncommEditorTracker.getInstance(project).isNoteHidden(note.id)
-            e.presentation.text = if (hidden) "Incomm: Show Comment" else "Incomm: Hide Comment"
+            e.presentation.text = if (hidden) "Incomm: Show Thread" else "Incomm: Hide Thread"
         }
     }
 

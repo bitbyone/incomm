@@ -8,9 +8,12 @@ import dev.incomm.editor.IncommEditorTracker
 import dev.incomm.model.AUTHOR_USER
 
 /**
- * "Incomm: Edit Comment" — edits the comment on the caret line in place (inside
- * its inline card). Enabled only when the caret is inside a comment's line range
- * and the comment is user-authored (agent comments aren't edited by the user).
+ * "Incomm: Edit" — edits the thread's comment on the caret line in place (inside
+ * its inline card). From the context menu this targets the original comment, so
+ * it is offered only when the thread has **no replies** (with replies it's
+ * ambiguous which message to edit — the card's per-message edit icons are used
+ * for that). Enabled only when the caret is inside a thread whose original
+ * comment is user-authored (agent comments aren't edited by the user).
  */
 class EditCommentAction : AnAction() {
 
@@ -20,7 +23,8 @@ class EditCommentAction : AnAction() {
         val editor = e.getData(CommonDataKeys.EDITOR)
         val project = e.project
         val note = if (project != null && editor != null) CaretNote.of(project, editor) else null
-        e.presentation.isEnabledAndVisible = note != null && note.author == AUTHOR_USER
+        e.presentation.isEnabledAndVisible =
+            note != null && note.author == AUTHOR_USER && note.replies.isEmpty()
     }
 
     override fun actionPerformed(e: AnActionEvent) {

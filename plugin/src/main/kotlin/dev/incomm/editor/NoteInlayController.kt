@@ -8,6 +8,8 @@ import com.intellij.openapi.actionSystem.CommonShortcuts
 import com.intellij.openapi.actionSystem.CustomShortcutSet
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.Inlay
+import com.intellij.openapi.editor.event.DocumentEvent
+import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.ex.util.EditorScrollingPositionKeeper
 import com.intellij.openapi.editor.impl.EditorEmbeddedComponentManager
@@ -110,8 +112,9 @@ class NoteInlayController(
     private fun rebuildInlays() {
         disposeCompose()
         val tracker = IncommEditorTracker.getInstance(project)
-        val desired = if (!tracker.inlaysVisible) emptyList()
-        else NotesService.getInstance(project).notesForFile(rel)
+        // Visibility is driven purely by hiddenNotes; "hide all" adds every id to
+        // it, so a per-thread gutter toggle can still reveal one thread afterwards.
+        val desired = NotesService.getInstance(project).notesForFile(rel)
             .filterNot { it.isHiddenInEditor() }
             .filterNot { tracker.isNoteHidden(it.id) }
         val desiredIds = desired.mapTo(HashSet()) { it.id }
@@ -152,7 +155,7 @@ class NoteInlayController(
     fun refreshCard(noteId: String) = keepScroll {
         cards.remove(noteId)?.let { if (it.inlay.isValid) Disposer.dispose(it.inlay) }
         val tracker = IncommEditorTracker.getInstance(project)
-        if (!tracker.inlaysVisible || tracker.isNoteHidden(noteId)) return@keepScroll
+        if (tracker.isNoteHidden(noteId)) return@keepScroll
         val note = NotesService.getInstance(project).find(noteId) ?: return@keepScroll
         if (note.isHiddenInEditor()) return@keepScroll
         if (note.file == rel) addCard(note)
@@ -176,6 +179,7 @@ class NoteInlayController(
                 IncommEditorTracker.getInstance(project)
                     .setHoveredNote(editor, if (hovered) note.id else null)
             },
+            onContentResized = { cards[note.id]?.inlay?.let { resizeInlay(it) } },
         )
         val host = noScrollHost().apply {
             isOpaque = true
@@ -305,8 +309,23 @@ class NoteInlayController(
         keepScroll {
             composeInlay = EditorEmbeddedComponentManager.getInstance().addComponent(ex, host, props)
         }
-        composeInlay?.let { field.setDisposedWith(it) }
+        composeInlay?.let { inlay ->
+            field.setDisposedWith(inlay)
+            // Grow the block inlay as the user adds lines, so the editor isn't
+            // clipped to one line and earlier lines don't scroll out of view.
+            field.addDocumentListener(object : DocumentListener {
+                override fun documentChanged(event: DocumentEvent) {
+                    field.revalidate()
+                    resizeInlay(inlay)
+                }
+            })
+        }
         focusWhenShown(field)
+    }
+
+    /** Re-measure a block inlay immediately after its embedded editor changed height. */
+    private fun resizeInlay(inlay: Inlay<*>) {
+        if (inlay.isValid) inlay.update()
     }
 
     /**
@@ -316,7 +335,17 @@ class NoteInlayController(
      * flat to blend into the card.
      */
     private fun composeField(): EditorTextField {
-        val field = EditorTextField("", project, FileTypes.PLAIN_TEXT)
+        // A plain EditorTextField reports a one-line preferred height even in
+        // multi-line mode, so it never grows. Size it to its actual line count.
+        val field = object : EditorTextField("", project, FileTypes.PLAIN_TEXT) {
+            override fun getPreferredSize(): java.awt.Dimension {
+                val base = super.getPreferredSize()
+                val ed = getEditor() ?: return base
+                val lines = ed.document.lineCount.coerceAtLeast(1)
+                val h = ed.lineHeight * lines + insets.top + insets.bottom + JBUI.scale(6)
+                return java.awt.Dimension(base.width, maxOf(base.height, h))
+            }
+        }
         field.setOneLineMode(false)
         field.setPlaceholder("Write a comment\u2026")
         field.background = ThreadUi.USER_BG

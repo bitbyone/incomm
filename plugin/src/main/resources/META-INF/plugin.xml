@@ -17,10 +17,14 @@
 
     <resource-bundle>messages.IncommBundle</resource-bundle>
 
-    <extensions defaultExtensionPointName="com.intellij">
-        <!-- NotesService and IncommEditorTracker are light @Service classes and
-             need no registration here. -->
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- NotesService, IncommEditorTracker and IncommSettings are light
+             @Service classes and need no registration here. -->
         <postStartupActivity implementation="dev.incomm.startup.IncommStartupActivity"/>
+        <applicationConfigurable parentId="tools"
+                                 id="dev.incomm.settings"
+                                 displayName="Incomm"
+                                 instance="dev.incomm.settings.IncommConfigurable"/>
     </extensions>
 
     <projectListeners>

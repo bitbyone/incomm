@@ -6,9 +6,9 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import dev.incomm.editor.IncommEditorTracker
 
 /**
- * "Incomm: Hide/Show Resolved" — collapses or reveals the inline cards of the
- * *resolved* comments only (open comments are untouched). Gutter icons stay so
- * threads remain reachable.
+ * "Incomm: Show/Hide Resolved Threads" — collapses or reveals the inline cards
+ * of the *resolved* threads only (open threads are untouched). Gutter icons stay
+ * so threads remain reachable.
  */
 class ToggleResolvedNotesAction : AnAction() {
 
@@ -19,7 +19,7 @@ class ToggleResolvedNotesAction : AnAction() {
         val tracker = project?.let { IncommEditorTracker.getInstance(it) }
         e.presentation.isEnabledAndVisible = tracker?.hasResolvedNotes() == true
         val anyVisible = tracker?.anyResolvedVisible() == true
-        e.presentation.text = if (anyVisible) "Incomm: Hide Resolved" else "Incomm: Show Resolved"
+        e.presentation.text = if (anyVisible) "Incomm: Hide Resolved Threads" else "Incomm: Show Resolved Threads"
     }
 
     override fun actionPerformed(e: AnActionEvent) {

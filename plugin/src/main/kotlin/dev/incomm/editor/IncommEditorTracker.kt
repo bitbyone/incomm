@@ -76,9 +76,18 @@ class IncommEditorTracker(private val project: Project) : Disposable {
     /** Individually collapsed threads (their card is hidden; gutter icon stays). */
     private val hiddenNotes = HashSet<String>()
 
-    /** Toggle the inline comment cards on/off and refresh all editors. */
+    /**
+     * Hide or show *all* inline cards. Implemented via [hiddenNotes] (the single
+     * source of truth for "card hidden") so an individual gutter-icon toggle can
+     * still reveal one thread afterwards. Gutter icons stay regardless.
+     */
     fun toggleInlaysVisible() {
         inlaysVisible = !inlaysVisible
+        if (inlaysVisible) {
+            hiddenNotes.clear()
+        } else {
+            NotesService.getInstance(project).allNotes().forEach { hiddenNotes.add(it.id) }
+        }
         for (controller in inlayControllers.values) controller.refresh()
     }
 
@@ -243,6 +252,11 @@ class IncommEditorTracker(private val project: Project) : Disposable {
                 if (editor.document === doc) controller.refreshLocations()
             }
         }
+    }
+
+    /** Rebuild every editor's incomm UI (e.g. after the settings colours changed). */
+    fun refreshUi() {
+        if (started) refreshAll()
     }
 
     private fun refreshAll() {

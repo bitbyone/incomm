@@ -7,9 +7,9 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import dev.incomm.editor.IncommEditorTracker
 
 /**
- * "Incomm: Resolve/Reopen Comment" — resolves (or reopens) the comment on the
+ * "Incomm: Resolve/Reopen Thread" — resolves (or reopens) the thread on the
  * caret line. Resolving also collapses its inline card. Enabled only when the
- * caret is inside a comment's line range.
+ * caret is inside a thread's line range.
  */
 class ResolveThreadAction : AnAction() {
 
@@ -21,7 +21,7 @@ class ResolveThreadAction : AnAction() {
         val note = if (project != null && editor != null) CaretNote.of(project, editor) else null
         e.presentation.isEnabledAndVisible = note != null
         if (note != null) {
-            e.presentation.text = if (note.resolved) "Incomm: Reopen Comment" else "Incomm: Resolve Comment"
+            e.presentation.text = if (note.resolved) "Incomm: Reopen Thread" else "Incomm: Resolve Thread"
         }
     }
 

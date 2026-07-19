@@ -8,9 +8,9 @@ import com.intellij.openapi.editor.Editor
 import dev.incomm.editor.IncommEditorTracker
 
 /**
- * "Incomm: Add Comment" — opens the inline composer for the current selection
- * (a line range) or, with no selection, the caret line. Discoverable in Find
- * Action and bindable to a shortcut.
+ * "Incomm: Start New Thread" — opens the inline composer for the current
+ * selection (a line range) or, with no selection, the caret line. Discoverable
+ * in Find Action and bindable to a shortcut.
  */
 class AddCommentAction : AnAction() {
 

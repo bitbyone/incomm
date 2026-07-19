@@ -7,10 +7,10 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import dev.incomm.store.NotesService
 
 /**
- * "Incomm: Delete Thread" — deletes the whole comment (and all its replies) on
- * the caret line directly, without opening it and without confirmation.
- * Discoverable in Find Action and the editor/gutter context menus; bindable to a
- * shortcut.
+ * "Incomm: Delete Thread" — deletes the whole thread (its original comment and
+ * all replies) on the caret line directly, without opening it and without
+ * confirmation. Discoverable in Find Action and the editor/gutter context menus;
+ * bindable to a shortcut.
  */
 class DeleteThreadAction : AnAction() {
 

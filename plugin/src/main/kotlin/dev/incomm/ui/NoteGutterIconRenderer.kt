@@ -6,6 +6,7 @@ import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsContexts
 import dev.incomm.editor.IncommEditorTracker
+import dev.incomm.model.AUTHOR_AGENT
 import dev.incomm.model.Note
 import javax.swing.Icon
 
@@ -49,16 +50,17 @@ class NoteGutterIconRenderer(
         }
 
         fun tooltipFor(note: Note): String {
-            val state = when {
-                note.orphaned -> " (orphaned)"
-                note.resolved -> " (resolved)"
-                else -> ""
-            }
-            val replies = if (note.replies.isNotEmpty()) " &middot; ${note.replies.size} repl." else ""
             val snippet = note.content.replace("\n", " ").let {
                 if (it.length > 80) it.take(77) + "\u2026" else it
             }
-            return "<html><b>incomm</b>$state$replies<br/>${escapeHtml(snippet)}</html>"
+            // Agent comments are prefixed "Agent:"; the human's are shown as-is.
+            val who = if (note.author == AUTHOR_AGENT) "<b>Agent:</b> " else ""
+            val meta = buildList {
+                if (note.orphaned) add("orphaned") else if (note.resolved) add("resolved")
+                if (note.replies.isNotEmpty()) add("${note.replies.size} repl.")
+            }
+            val metaLine = if (meta.isEmpty()) "" else "<br/><small>${meta.joinToString(" \u00B7 ")}</small>"
+            return "<html>$who${escapeHtml(snippet)}$metaLine</html>"
         }
 
         private fun escapeHtml(s: String): String =

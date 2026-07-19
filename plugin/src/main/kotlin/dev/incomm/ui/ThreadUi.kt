@@ -8,6 +8,7 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import dev.incomm.model.AUTHOR_AGENT
 import dev.incomm.model.AUTHOR_USER
+import dev.incomm.settings.IncommSettings
 import java.awt.Color
 import java.awt.Cursor
 import java.awt.Graphics
@@ -57,6 +58,7 @@ object ThreadUi {
             isOpaque = false
             border = if (editable) JBUI.Borders.empty(4) else JBUI.Borders.emptyTop(4)
             font = UIUtil.getLabelFont()
+            foreground = IncommColors.commentFg
             emptyText.text = placeholder
         }
         area.caretPosition = area.text.length
@@ -84,7 +86,7 @@ object ThreadUi {
         else -> author
     }
 
-    fun prettyTime(s: String) = s.replace('T', ' ').removeSuffix("Z")
+    fun prettyTime(s: String) = IncommSettings.getInstance().formatTimestamp(s)
     fun hex(c: Color) = "#%02x%02x%02x".format(c.red, c.green, c.blue)
     fun escape(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 

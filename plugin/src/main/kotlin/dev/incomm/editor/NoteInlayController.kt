@@ -193,20 +193,19 @@ class NoteInlayController(
         val charWidth = editor.contentComponent.getFontMetrics(font).charWidth('m')
         val maxPx = if (maxChars > 0) maxChars * charWidth else Int.MAX_VALUE
 
+        // When indented, remove the card's own left padding so it aligns
+        // precisely with the code's first non-whitespace character.
+        if (indentPx > 0) {
+            val b = card.border?.getBorderInsets(card)
+            if (b != null) card.border = JBUI.Borders.empty(b.top, 0, b.bottom, b.right)
+        }
+
         val host = noScrollHost().apply {
             isOpaque = true
             background = editor.colorsScheme.defaultBackground
-            layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
+            layout = BorderLayout()
             border = JBUI.Borders.emptyLeft(indentPx)
-            // When indented, remove the card's own left padding so it aligns
-            // precisely with the code's first non-whitespace character.
-            if (indentPx > 0) {
-                val b = card.border?.getBorderInsets(card)
-                if (b != null) card.border = JBUI.Borders.empty(b.top, 0, b.bottom, b.right)
-            }
-            card.alignmentX = java.awt.Component.LEFT_ALIGNMENT
-            card.maximumSize = Dimension(maxPx, Int.MAX_VALUE)
-            add(card)
+            add(widthCapped(card, maxPx), BorderLayout.LINE_START)
         }
         val props = EditorEmbeddedComponentManager.Properties(
             EditorEmbeddedComponentManager.ResizePolicy.none(),
@@ -239,6 +238,36 @@ class NoteInlayController(
         val firstNonWsX = editor.offsetToXY(i).x.toInt()
         val lineStartX = editor.offsetToXY(lineStart).x.toInt()
         return (firstNonWsX - lineStartX).coerceAtLeast(0)
+    }
+
+    /** Compute the max card width in pixels from settings. */
+    private fun computeMaxPx(): Int {
+        val ex = editor as? EditorEx ?: return Int.MAX_VALUE
+        val maxChars = IncommSettings.getInstance().data.maxCardWidthChars
+        if (maxChars <= 0) return Int.MAX_VALUE
+        val font = ex.colorsScheme.getFont(com.intellij.openapi.editor.colors.EditorFontType.PLAIN)
+        val charWidth = editor.contentComponent.getFontMetrics(font).charWidth('m')
+        return maxChars * charWidth
+    }
+
+    /**
+     * Wrap [component] in a panel that caps its preferred/maximum width to [maxPx].
+     * Used with [BorderLayout.LINE_START] so the component takes its natural width
+     * up to the cap, without stretching to full editor width.
+     */
+    private fun widthCapped(component: JPanel, maxPx: Int): JPanel {
+        if (maxPx == Int.MAX_VALUE) return component
+        return object : JPanel(BorderLayout()) {
+            init { isOpaque = false; add(component, BorderLayout.CENTER) }
+            override fun getPreferredSize(): Dimension {
+                val pref = super.getPreferredSize()
+                return Dimension(pref.width.coerceAtMost(maxPx), pref.height)
+            }
+            override fun getMaximumSize(): Dimension {
+                val max = super.getMaximumSize()
+                return Dimension(max.width.coerceAtMost(maxPx), max.height)
+            }
+        }
     }
 
     /** Resolve/reopen a thread; resolving also collapses (hides) its card. */
@@ -297,6 +326,9 @@ class NoteInlayController(
         val anchor0 = (anchorLine - 1).coerceIn(0, doc.lineCount - 1)
         val offset = doc.getLineStartOffset(anchor0)
 
+        val indentPx = computeIndentPx(anchor0)
+        val maxPx = computeMaxPx()
+
         val field = composeField()
         val icons = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
         val header = JPanel(BorderLayout()).apply {
@@ -308,13 +340,18 @@ class NoteInlayController(
             layout = BorderLayout(0, 6)
             border = JBUI.Borders.empty(5, 12, 6, 8)
         }
+        // Strip left padding when indented, same as display cards.
+        if (indentPx > 0) {
+            card.border = JBUI.Borders.empty(5, 0, 6, 8)
+        }
         card.add(header, BorderLayout.NORTH)
         card.add(field, BorderLayout.CENTER)
         val host = noScrollHost().apply {
             isOpaque = true
             background = editor.colorsScheme.defaultBackground
-            border = JBUI.Borders.empty(1, 8, 5, 10)
-            add(card, BorderLayout.CENTER)
+            layout = BorderLayout()
+            border = JBUI.Borders.emptyLeft(indentPx)
+            add(widthCapped(card, maxPx), BorderLayout.LINE_START)
         }
 
         fun save() {

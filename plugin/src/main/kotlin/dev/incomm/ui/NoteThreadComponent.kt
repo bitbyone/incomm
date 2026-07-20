@@ -217,9 +217,10 @@ class NoteThreadComponent(
 
     private fun highlightSnippetLine(editor: EditorEx, line: Int) {
         if (line < 0 || line >= editor.document.lineCount) return
-        // Match the editor's active caret-row colour so the note's line(s) look
-        // highlighted exactly like the line the cursor sits on.
-        val bg = IncommColors.caretRow(editor.colorsScheme)
+        // A clearly visible tint over the note's line(s). The editor's caret-row
+        // colour is nearly invisible in light themes, so use a dedicated accent
+        // tint that stands out from the plain preview background.
+        val bg = IncommColors.previewHighlight(editor.colorsScheme)
         val attrs = TextAttributes().apply { backgroundColor = bg }
         editor.markupModel.addLineHighlighter(line, HighlighterLayer.CARET_ROW, attrs)
     }

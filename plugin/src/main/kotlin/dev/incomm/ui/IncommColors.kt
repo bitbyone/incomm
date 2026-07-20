@@ -109,4 +109,15 @@ object IncommColors {
      */
     fun caretRow(scheme: EditorColorsScheme): Color =
         scheme.getColor(EditorColors.CARET_ROW_COLOR) ?: JBUI.CurrentTheme.Banner.INFO_BACKGROUND
+
+    /**
+     * A clearly visible highlight for the note's line(s) in the explorer code
+     * preview: the preview background tinted toward the info accent. Unlike the
+     * caret-row colour this stays visible in light themes.
+     */
+    fun previewHighlight(scheme: EditorColorsScheme): Color {
+        val bg = scheme.defaultBackground
+        val accent = JBUI.CurrentTheme.Banner.INFO_BORDER_COLOR
+        return ColorUtil.mix(bg, accent, if (isLight()) 0.22 else 0.18)
+    }
 }

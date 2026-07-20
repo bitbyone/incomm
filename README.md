@@ -14,6 +14,9 @@ as **distributed prompting across multiple files**: instead of packing every
 instruction into one chat message, you can place precise, file-local prompts
 where they belong and let an agent process them programmatically.
 
+![Incomm thread](docs/images/intellij-screenshot.png)
+![Incomm explorer](docs/images/intellij-explorer.png)
+
 The on-disk format and CLI are intentionally editor/IDE agnostic. At the moment,
 the only supported editor integration in this repository is the IntelliJ/
 JetBrains plugin, but other integrations can implement the same shared spec.

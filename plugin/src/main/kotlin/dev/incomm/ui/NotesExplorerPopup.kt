@@ -177,7 +177,7 @@ object NotesExplorerPopup {
         }
 
         popup = JBPopupFactory.getInstance()
-            .createComponentPopupBuilder(root, search)
+            .createComponentPopupBuilder(root, list)
             .setRequestFocus(true)
             .setFocusable(true)
             .setResizable(true)
@@ -223,6 +223,13 @@ object NotesExplorerPopup {
             CustomShortcutSet.fromString(if (SystemInfo.isMac) "meta X" else "control X"),
             root,
         )
+        // Cmd+F (Ctrl+F off macOS) is the only list-level way to enter search.
+        object : DumbAwareAction() {
+            override fun actionPerformed(e: AnActionEvent) = focusSearch()
+        }.registerCustomShortcutSet(
+            CustomShortcutSet.fromString(if (SystemInfo.isMac) "meta F" else "control F"),
+            root,
+        )
         search.addDocumentListener(object : DocumentListener {
             override fun insertUpdate(e: DocumentEvent) = reload(selected()?.id)
             override fun removeUpdate(e: DocumentEvent) = reload(selected()?.id)
@@ -243,24 +250,19 @@ object NotesExplorerPopup {
             override fun keyPressed(e: KeyEvent) {
                 when (e.keyCode) {
                     KeyEvent.VK_ENTER -> openSelected()
-                    // Backspace anywhere in the list edits the query and jumps back to search.
-                    KeyEvent.VK_BACK_SPACE -> {
-                        if (search.text.isNotEmpty()) search.text = search.text.dropLast(1)
-                        focusSearch()
+                    KeyEvent.VK_J -> {
+                        if (e.isControlDown || e.isMetaDown || e.isAltDown) return
+                        if (list.selectedIndex < model.size - 1) list.selectedIndex += 1
+                        list.ensureIndexIsVisible(list.selectedIndex)
+                        e.consume()
+                    }
+                    KeyEvent.VK_K -> {
+                        if (e.isControlDown || e.isMetaDown || e.isAltDown) return
+                        if (list.selectedIndex > 0) list.selectedIndex -= 1
+                        list.ensureIndexIsVisible(list.selectedIndex)
                         e.consume()
                     }
                 }
-            }
-
-            // Typing a character anywhere in the list refocuses the search bar and
-            // starts filtering — exactly like the IntelliJ Settings search.
-            override fun keyTyped(e: KeyEvent) {
-                if (e.isControlDown || e.isMetaDown || e.isAltDown) return
-                val c = e.keyChar
-                if (c == KeyEvent.CHAR_UNDEFINED || Character.isISOControl(c)) return
-                search.text += c
-                focusSearch()
-                e.consume()
             }
         })
 
@@ -273,9 +275,10 @@ object NotesExplorerPopup {
         val o = if (SystemInfo.isMac) "\u2318O" else "Ctrl+O"
         val r = if (SystemInfo.isMac) "\u2318R" else "Ctrl+R"
         val x = if (SystemInfo.isMac) "\u2318X" else "Ctrl+X"
+        val f = if (SystemInfo.isMac) "\u2318F" else "Ctrl+F"
         return JBLabel(
-            "<html><small>&nbsp;\u2191\u2193 navigate &nbsp;\u00B7&nbsp; \u23CE open &nbsp;\u00B7&nbsp; " +
-                "type to filter &nbsp;\u00B7&nbsp; $o open &nbsp;\u00B7&nbsp; $r resolved &nbsp;\u00B7&nbsp; $x orphaned</small></html>"
+            "<html><small>&nbsp;\u2191\u2193 j/k &nbsp;\u00B7&nbsp; \u23CE go to &nbsp;\u00B7&nbsp; " +
+                "$f search &nbsp;\u00B7&nbsp; $o open &nbsp;\u00B7&nbsp; $r resolved &nbsp;\u00B7&nbsp; $x orphaned</small></html>"
         ).apply { border = JBUI.Borders.empty(3, 6) }
     }
 

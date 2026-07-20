@@ -45,7 +45,7 @@ class NotesService(private val project: Project) : Disposable {
     private val locallyDeleted = HashSet<String>()
 
     private val writeExecutor =
-        AppExecutorUtil.createBoundedApplicationPoolExecutor("incomm-notes-writer", 1)
+        AppExecutorUtil.createBoundedApplicationPoolExecutor("Incomm Notes Writer", 1)
 
     init {
         // Detect the initial branch from .git/HEAD (no VCS timing dependency).

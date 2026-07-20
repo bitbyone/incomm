@@ -38,7 +38,7 @@
     </projectListeners>
 
     <actions>
-        <action id="incomm.AddComment"
+        <action id="incomm.StartThread"
                 class="dev.incomm.actions.AddCommentAction"
                 icon="/icons/addComment.svg">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
@@ -48,8 +48,8 @@
         <action id="incomm.Reply"
                 class="dev.incomm.actions.ReplyAction"
                 icon="/icons/reply.svg">
-            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="incomm.AddComment"/>
-            <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="incomm.AddComment"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="incomm.StartThread"/>
+            <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="incomm.StartThread"/>
         </action>
 
         <action id="incomm.EditComment"
@@ -80,13 +80,13 @@
             <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="incomm.ToggleThread"/>
         </action>
 
-        <action id="incomm.ShowComments"
+        <action id="incomm.OpenExplorer"
                 class="dev.incomm.actions.ShowCommentsAction"
                 icon="/icons/comment.svg">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
-        <action id="incomm.ToggleNotes"
+        <action id="incomm.ToggleAllThreads"
                 class="dev.incomm.actions.ToggleNotesAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
@@ -101,7 +101,7 @@
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
-        <action id="incomm.Clear"
+        <action id="incomm.ClearAllThreads"
                 class="dev.incomm.actions.ClearAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>

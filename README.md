@@ -281,8 +281,8 @@ registration): **`NotesService`** (data) and **`IncommEditorTracker`** (editor w
   Search-Everywhere-style header: search field + **"Include orphaned"** (default **on**, toggle
   **⌘O / Ctrl+O**) and **"Include resolved"** (default off, toggle **⌘R / Ctrl+R**) checkboxes.
   Left = list (`NoteListCellRenderer`, two-line rows; orphaned rows tinted red, resolved rows
-  green — both shown side by side when a note is both); right = `NoteThreadComponent`. Typing
-  anywhere in the list refocuses the search (like Settings); ↑/↓ navigate, ↵ opens the file
+  green — both shown side by side when a note is both); right = `NoteThreadComponent`. Search is
+  focused with ⌘F / Ctrl+F; ↑/↓ or j/k navigate, ↵ navigates to the file
   (caret at the first non-blank column via `IncommNavigator`).
 - **`IncommColors`** — the **single source of truth for every colour**, resolved from the
   active IDE theme (`JBUI.CurrentTheme.Banner` semantic palette + editor scheme) unless the
@@ -308,7 +308,7 @@ Contextual (editor + gutter popup; enabled only when relevant; dynamic text wher
 
 | Action id | Text | When enabled |
 |-----------|------|--------------|
-| `incomm.AddComment` | Incomm: Start New Thread | file present; uses selection range or caret line |
+| `incomm.StartThread` | Incomm: Start New Thread | file present; uses selection range or caret line |
 | `incomm.Reply` | Incomm: Reply | caret in a thread's range |
 | `incomm.EditComment` | Incomm: Edit | caret in a **user**-authored thread **with no replies** (unambiguous target) |
 | `incomm.ResolveThread` | Incomm: Resolve/Reopen Thread | caret in a thread (resolve also hides card) |
@@ -319,11 +319,11 @@ Tools-menu / global:
 
 | Action id | Text | Effect |
 |-----------|------|--------|
-| `incomm.ShowComments` | Incomm: Thread Explorer | open the explorer |
-| `incomm.ToggleNotes` | Incomm: Show/Hide All Threads | show/hide **all** inline cards (gutter icons stay) |
+| `incomm.OpenExplorer` | Incomm: Thread Explorer | open the explorer |
+| `incomm.ToggleAllThreads` | Incomm: Show/Hide All Threads | show/hide **all** inline cards (gutter icons stay) |
 | `incomm.ToggleResolved` | Incomm: Show/Hide Resolved Threads | show/hide **resolved** cards only |
 | `incomm.ClearFile` | Incomm: Clear Threads in File | delete threads for the current file (confirm) |
-| `incomm.Clear` | Incomm: Clear All Threads | delete everything (confirm) |
+| `incomm.ClearAllThreads` | Incomm: Clear All Threads | delete everything (confirm) |
 | `incomm.Reload` | Incomm: Reload State | force-reload the notes model from disk and refresh all UI |
 
 Terminology: a **thread** is the whole envelope (`Note` in code); its original **comment**

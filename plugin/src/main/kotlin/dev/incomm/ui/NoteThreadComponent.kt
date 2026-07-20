@@ -203,7 +203,7 @@ class NoteThreadComponent(
 
         val wrapper = JPanel(BorderLayout()).apply {
             isOpaque = false
-            border = JBUI.Borders.empty(0, 10, 6, 10)
+            border = JBUI.Borders.empty(8, 10, 10, 10)
             add(field, BorderLayout.CENTER)
         }
         // Cap the preview height so large ranges don't push the thread off-screen.

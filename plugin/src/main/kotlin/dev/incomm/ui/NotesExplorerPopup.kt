@@ -22,6 +22,7 @@ import dev.incomm.store.NotesService
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
+import java.awt.GridBagLayout
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import javax.swing.DefaultListModel
@@ -119,7 +120,6 @@ object NotesExplorerPopup {
 
         val leftPanel = JPanel(BorderLayout()).apply {
             add(JBScrollPane(list), BorderLayout.CENTER)
-            add(hintBar(), BorderLayout.SOUTH)
         }
 
         val splitter = JBSplitter(false, 0.42f).apply {
@@ -136,18 +136,22 @@ object NotesExplorerPopup {
             add(resolvedFilter)
             add(orphanedFilter)
         }
-        // ~6 words wide so it doesn't stretch to the checkboxes.
-        search.preferredSize = Dimension(JBUI.scale(220), search.preferredSize.height)
-        val searchWrap = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+        // GridBag wrappers vertically centre their content within the header.
+        val filtersWrap = JPanel(GridBagLayout()).apply {
+            isOpaque = false
+            add(filters)
+        }
+        search.preferredSize = Dimension(JBUI.scale(330), search.preferredSize.height)
+        val searchWrap = JPanel(GridBagLayout()).apply {
             isOpaque = false
             add(search)
         }
         val header = JPanel(BorderLayout()).apply {
             add(searchWrap, BorderLayout.WEST)
-            add(filters, BorderLayout.EAST)
+            add(filtersWrap, BorderLayout.EAST)
             border = JBUI.Borders.compound(
                 JBUI.Borders.customLine(JBColor.border(), 0, 0, 1, 0),
-                JBUI.Borders.empty(3, 6, 3, 8),
+                JBUI.Borders.empty(4, 6, 4, 8),
             )
         }
         // Drag the header's empty middle to move the popup (search/checkboxes keep
@@ -159,6 +163,8 @@ object NotesExplorerPopup {
         val root = JPanel(BorderLayout()).apply {
             add(header, BorderLayout.NORTH)
             add(splitter, BorderLayout.CENTER)
+            // Hints span the full window width (one line as far as it fits).
+            add(hintBar(), BorderLayout.SOUTH)
         }
 
         popup = JBPopupFactory.getInstance()
@@ -246,9 +252,14 @@ object NotesExplorerPopup {
         popup.showCenteredInCurrentWindow(project)
     }
 
-    private fun hintBar(): JComponent =
-        JBLabel("<html><small>&nbsp;\u2191\u2193 navigate &nbsp;\u00B7&nbsp; \u23CE open &nbsp;\u00B7&nbsp; type to filter &nbsp;\u00B7&nbsp; \u2318O/Ctrl+O orphaned &nbsp;\u00B7&nbsp; \u2318R/Ctrl+R resolved</small></html>")
-            .apply { border = JBUI.Borders.empty(3, 6) }
+    private fun hintBar(): JComponent {
+        val o = if (SystemInfo.isMac) "\u2318O" else "Ctrl+O"
+        val r = if (SystemInfo.isMac) "\u2318R" else "Ctrl+R"
+        return JBLabel(
+            "<html><small>&nbsp;\u2191\u2193 navigate &nbsp;\u00B7&nbsp; \u23CE open &nbsp;\u00B7&nbsp; " +
+                "type to filter &nbsp;\u00B7&nbsp; $o orphaned &nbsp;\u00B7&nbsp; $r resolved</small></html>"
+        ).apply { border = JBUI.Borders.empty(3, 6) }
+    }
 
     private fun searchableText(note: Note): String =
         "${note.file}:${note.startLine} ${note.content} ${note.replies.joinToString(" ") { it.content }}"

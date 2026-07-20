@@ -17,7 +17,7 @@ var (
 
 var replyCmd = &cobra.Command{
 	Use:   "reply <id>",
-	Short: "Add a reply to a comment (shows inline in the IDE)",
+	Short: "Add a reply to a line-anchored thread",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if replyContent == "" {

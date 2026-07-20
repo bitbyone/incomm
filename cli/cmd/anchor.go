@@ -19,11 +19,11 @@ var anchorCmd = &cobra.Command{
 
 Every comment stores a line position (startLine/endLine) plus a textual "anchor"
 (start/end prefixes, surrounding context lines and a checksum) used to re-find
-that position after the file changes. Normally the IntelliJ plugin and the
-"reanchor" command recompute positions automatically. When that heuristic can't
-place a comment it is marked "orphaned"; an agent that knows exactly where its
-own edit landed can use these commands to set the final position or edit the
-anchor fields directly.`,
+that position after the file changes. Normally compatible incomm integrations
+and the "reanchor" command recompute positions automatically. When that
+heuristic can't place a comment it is marked "orphaned"; an agent that knows
+exactly where its own edit landed can use these commands to set the final
+position or edit the anchor fields directly.`,
 }
 
 // ---- anchor get -------------------------------------------------------------

@@ -1,19 +1,29 @@
 # incomm
 
-**Inline, line-anchored code-review comments designed for AI-agent workflows.**
+**Line-anchored context threads for humans and AI agents.**
 
-A human attaches a comment to specific line(s) of any file inside the JetBrains
-IDE. An AI agent reads those comments through a CLI, does the work, and replies —
-and the reply shows up **inline in the editor, right under the line**. The agent
-can also leave its **own** comments on specific lines during a review. Everything
-is stored in one JSON file both sides share.
+`incomm` lets you attach threaded notes to exact lines and ranges in a codebase,
+then share those notes through a small branch-scoped JSON state file. Humans can
+leave review feedback, TODOs, questions, implementation hints, or missing
+context directly next to the relevant code. Agents can read that distributed
+context through the CLI, act on it, reply to threads, resolve them, or leave
+their own line-anchored observations for the human or a future agent pass.
+
+It works well for local code review, but it is not limited to review. Think of it
+as **distributed prompting across multiple files**: instead of packing every
+instruction into one chat message, you can place precise, file-local prompts
+where they belong and let an agent process them programmatically.
+
+The on-disk format and CLI are intentionally editor/IDE agnostic. At the moment,
+the only supported editor integration in this repository is the IntelliJ/
+JetBrains plugin, but other integrations can implement the same shared spec.
 
 ```
-┌────────────────────────┐   <project-root>/.incomm/notes_<branch>.json   ┌───────────────────┐
-│  IntelliJ plugin        │  ───────────────  read / write  ─────────────▶ │  CLI  (binary     │
-│  (Kotlin) — the human   │ ◀───────────────  read / write  ─────────────  │  `incomm`, Go)    │
-│  adds/answers inline    │        (atomic writes, merge-on-write,         │  the AI agent      │
-└────────────────────────┘  plugin live-reloads; branch-scoped files)     └───────────────────┘
+┌───────────────────────────────┐ <project-root>/.incomm/notes_<branch>.json ┌───────────────────┐
+│ Editor/UI integration          │ ─────────────── read / write ────────────▶ │ CLI / agents /    │
+│ (currently IntelliJ plugin)    │ ◀────────────── read / write ────────────  │ scripts           │
+│ humans add/browse/reply inline │       atomic writes; branch-scoped files   │ `incomm`, Go      │
+└───────────────────────────────┘                                             └───────────────────┘
 ```
 
 ---
@@ -22,13 +32,14 @@ is stored in one JSON file both sides share.
 
 | Part | Path | Language | Who uses it | Purpose |
 |------|------|----------|-------------|---------|
-| **IntelliJ plugin** | `plugin/` | Kotlin (Gradle) | the human | Add/browse/reply/resolve/edit/delete comments on lines, GitHub-review style, fully inline in the editor. |
-| **CLI** | `cli/` | Go (cobra) | the AI agent | List/read/add/reply/resolve/remove comments and edit anchors programmatically; emits `--json`. |
-| **Shared spec** | §11 (this README) | — | both | The **single source of truth**: JSON schema + the anchoring algorithm. Both sides implement it identically. |
+| **IntelliJ plugin** | `plugin/` | Kotlin (Gradle) | humans | Current supported editor integration: add/browse/reply/resolve/edit/delete line-anchored threads inline. |
+| **CLI** | `cli/` | Go (cobra) | agents, scripts, tools | IDE-agnostic API for list/read/add/reply/resolve/remove and low-level anchor edits; emits `--json`. |
+| **Shared spec** | §11 (this README) | — | every integration | The **single source of truth**: JSON schema + the anchoring algorithm. Integrations must implement it identically. |
 | **Fixtures** | `fixtures/` | — | both test suites | Shared sample data proving schema/anchoring parity across Kotlin and Go. |
 
 The plugin and CLI are **independent builds** that only agree on the shared spec
-(§11) and the on-disk file. The Go CLI is intentionally **not** part of the Gradle build.
+(§11) and the on-disk file. The Go CLI is intentionally **not** part of the
+Gradle build, and the file format is not tied to IntelliJ.
 
 ```
 incomm/
@@ -57,19 +68,19 @@ incomm/
   exact JSON.
 - **Storage:** everything lives in `<project-root>/.incomm/notes_<branch>.json`
   (one file per git branch; falls back to `notes.json` when git is unavailable).
-  Writers use **atomic writes** (temp file + rename). The plugin uses
-  **merge-on-write** so its writes never clobber notes the agent added
-  concurrently (within a single note it's last-write-wins). The plugin watches
-  the file and live-reloads on external (agent) writes. When the branch changes,
-  the plugin switches to the new branch's file (existing or empty) and the CLI
-  auto-detects the branch from `.git/HEAD`.
+  Writers use **atomic writes** (temp file + rename). Editor integrations should
+  use **merge-on-write** so their writes never clobber notes an agent added
+  concurrently (within a single note it's last-write-wins). The current IntelliJ
+  integration watches the file and live-reloads on external writes. When the
+  branch changes, both the integration and CLI switch to the corresponding file.
 - **Anchoring:** comments stay attached to the right line even as files change, via a
   best-effort text anchor (prefixes + context + checksum). Positions are recomputed
-  (reindexed) **live** on every file change — in the plugin as you type, and in the CLI
-  via `reanchor`/`list`. If re-anchoring can't place a note confidently it's marked
-  `orphaned`; an agent that knows where its edit landed can fix it with the low-level
-  `anchor` CLI commands. The algorithm is specified in §11 and implemented **identically**
-  in `Anchoring.kt` (Kotlin) and `internal/anchor` (Go); the shared fixtures enforce parity.
+  (reindexed) **live** by compatible integrations (the current IntelliJ plugin does it
+  as you type), and in the CLI via `reanchor`/`list`. If re-anchoring can't place a
+  note confidently it's marked `orphaned`; an agent that knows where its edit landed
+  can fix it with the low-level `anchor` CLI commands. The algorithm is specified in
+  §11 and implemented **identically** in `Anchoring.kt` (Kotlin) and `internal/anchor`
+  (Go); the shared fixtures enforce parity.
 - **Authors & colors convention:** `user` = **blue**, `agent` = **green** throughout the
   UI; a note's state is colour-coded too (open = blue, resolved = green, orphaned = red).
   All colours come from the active IDE theme (`ui/IncommColors.kt`) — never hard-coded — and
@@ -131,7 +142,7 @@ instruction sheet. Load it, then:
 incomm list --unresolved --json     # 1. what did the human flag?
 incomm show <id> --json             # 2. read one thread in full
 # 3. do the work…
-incomm reply <id> -c "Fixed: streams the file now."   # 4. answer (shows inline in IDE)
+incomm reply <id> -c "Fixed: streams the file now."   # 4. answer in the shared thread
 incomm resolve <id>                 # 5. mark handled
 # …or leave your own review remark on a line:
 incomm add -f src/app/main.go -l 42 -c "This ignores the error."
@@ -142,7 +153,9 @@ incomm add -f src/app/main.go -l 42:48 -c "Extract into a helper."   # a range
 
 ## 5. CLI reference (`cli/`)
 
-Go module `incomm`, cobra-based, one command per file in `cli/cmd/`.
+Go module `incomm`, cobra-based, one command per file in `cli/cmd/`. The CLI is
+IDE-agnostic: it reads and writes the shared state file for agents, scripts, and
+any compatible editor/UI integration.
 
 **Global flags** (persistent):
 - `--root <dir>` — project root; default = CWD, walking **up** to find an existing `.incomm/`.
@@ -423,10 +436,10 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
 
 ## 11. Data format & anchoring specification (the shared spec)
 
-This chapter is the **single source of truth** shared by the IntelliJ plugin
-(Kotlin) and the CLI (Go). Both implementations MUST read/write this exact
-schema and implement the anchoring algorithm identically. The fixtures under
-`/fixtures` are used by both test suites to guarantee parity.
+This chapter is the **single source of truth** for every incomm integration and
+the CLI. All implementations MUST read/write this exact schema and implement the
+anchoring algorithm identically. The fixtures under `/fixtures` are used by the
+test suites to guarantee parity.
 
 ### 11.1 File location
 
@@ -449,9 +462,9 @@ restores the previous branch's threads.
 
 The project root is:
 
-- **Plugin:** the IntelliJ project's base path. The branch is detected via
-  IntelliJ's `BranchChangeListener` API (fires for any VCS branch change) with
-  a fallback to reading `.git/HEAD` at startup.
+- **Current IntelliJ integration:** the IntelliJ project's base path. The branch
+  is detected via IntelliJ's `BranchChangeListener` API (fires for any VCS branch
+  change) with a fallback to reading `.git/HEAD` at startup.
 - **CLI:** the nearest ancestor directory (starting from `--root` or CWD) that
   contains a `.incomm/` directory. If none is found, `.incomm/` is created in
   `--root`/CWD. The branch is auto-detected from `.git/HEAD` and can be
@@ -507,8 +520,9 @@ The project root is:
   Absent or `null` in legacy files (pre-branch support).
 - `file` always uses `/` separators, even on Windows.
 - `author` is a type discriminator: `"user"` or `"agent"`. `authorTitle` is the
-  display name — the plugin sets it from `git user.name` for user-authored
-  comments; agents may set it via `--author-title` (e.g. `"Opus 4.6"`).
+  display name — compatible editor integrations should set it from `git user.name`
+  for user-authored comments; agents may set it via `--author-title` (e.g.
+  `"Opus 4.6"`).
   `authorTitle` is optional / nullable; absent means no explicit name.
   Rendering: user comments show the title directly (e.g. "Jan Tobola"); agent
   comments show "Agent" or "Agent (Opus 4.6)" when a title is present.

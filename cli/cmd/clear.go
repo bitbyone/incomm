@@ -10,8 +10,7 @@ var clearCmd = &cobra.Command{
 	Long: `Delete every comment by removing the branch-scoped notes file
 (e.g. .incomm/notes_main.json, or .incomm/notes.json if git is unavailable).
 
-This is the CLI equivalent of the "Incomm: Clear All Comments" IDE action. It is
-intentionally non-interactive so agents and scripts can call it directly.`,
+This is intentionally non-interactive so agents and scripts can call it directly.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		st, err := openStore()

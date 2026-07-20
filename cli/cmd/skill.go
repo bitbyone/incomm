@@ -64,28 +64,31 @@ func init() {
 const skillMarkdown = `---
 name: incomm
 description: >-
-  Read and answer inline, line-anchored code-review comments a human left in the
-  incomm editor plugin, and leave your own review remarks anchored to
-  specific lines of files. Use when the user mentions incomm or review comments,
-  asks you to address review feedback, or when you review code and want to attach
-  remarks to exact lines of specific files.
+  Read and answer line-anchored incomm threads a human left in the shared project
+  state, and leave your own file-local context anchored to specific lines. Use
+  when the user mentions incomm, review comments, line-anchored context, or when
+  you want to attach precise notes to exact lines across multiple files.
 ---
 
-# incomm — inline code-review comments (agent skill)
+# incomm — line-anchored context threads (agent skill)
 
 incomm is a command-line tool that reads and writes ` + "`" + `<project-root>/.incomm/notes_<branch>.json` + "`" + `
-(or ` + "`" + `notes.json` + "`" + ` when git is unavailable).
-A human attaches comments to specific lines of files inside their editor. You,
-the AI agent, use the incomm CLI to read those comments, do the work, and reply —
-your reply shows up inline in the editor, right under the referenced line. You can also
-leave your OWN comments on specific lines while reviewing code.
+(or ` + "`" + `notes.json` + "`" + ` when git is unavailable). It is an IDE-agnostic
+communication bridge between agents and compatible editor/UI integrations.
+
+A human can attach comments, TODOs, questions, implementation hints, or missing
+context to exact lines and ranges. You, the AI agent, use the incomm CLI to read
+those line-anchored threads, do the work, and reply in the shared state. Your
+reply becomes visible through the user's incomm integration. You can also leave
+your OWN line-anchored comments while reviewing or exploring code.
 
 Notes are scoped to the current git branch. When you switch branches, incomm
 automatically switches to the corresponding notes file. The branch is detected by
 reading ` + "`" + `.git/HEAD` + "`" + ` — no git binary is required.
 
-This is the primary way to communicate concrete answers and requests with the human
-line by line, anchored to real code, instead of only in chat.
+Treat these threads as precise, file-local prompts. They are useful for local
+code review, but also as distributed prompting across a codebase: context can
+live next to the relevant line instead of being packed into one chat message.
 
 ## Setup
 
@@ -97,7 +100,7 @@ line by line, anchored to real code, instead of only in chat.
 - The ` + "`" + `--author` + "`" + ` flag defaults to ` + "`" + `agent` + "`" + ` (that is you) for ` + "`" + `add` + "`" + ` and ` + "`" + `reply` + "`" + `.
   Comments written by the human have author ` + "`" + `user` + "`" + `.
 - Use ` + "`" + `--author-title` + "`" + ` to identify yourself (e.g. ` + "`" + `--author-title "Opus 4.6"` + "`" + `).
-  The title is shown in the IDE as "Agent (Opus 4.6)". **Always include your
+  Compatible integrations may render this as "Agent (Opus 4.6)". **Always include your
   model name** so the human knows which agent wrote each comment.
 
 ## What you can do
@@ -118,7 +121,8 @@ incomm show <id> --json
 
 3. Do the actual work in the code.
 
-4. Reply. Your reply appears inline in the editor at that line:
+4. Reply. Your reply is written to the shared thread and becomes visible through
+   the user's incomm integration:
 
 ~~~bash
 incomm reply <id> --content "Fixed: now streams the file instead of buffering it."
@@ -132,8 +136,8 @@ incomm resolve <id>
 
 ### B. Leave your own review remarks (a new comment on specific lines)
 
-While reviewing, attach a remark to the exact line or line range so the human sees it
-in the editor at that spot:
+While reviewing, attach a remark to the exact line or line range so the human can
+see it in context through their incomm integration:
 
 ~~~bash
 # a single line
@@ -167,8 +171,8 @@ incomm anchor recompute [--id X] [--file F]          refresh anchor text at curr
 ## Fixing positions when auto-reanchor fails
 
 After you edit files, stored line numbers self-heal: ` + "`" + `incomm reanchor` + "`" + ` (and ` + "`" + `incomm list` + "`" + `,
-which reanchors first) re-find each comment by its stored anchor text. The editor
-plugin does the same automatically and live as the file changes.
+which reanchors first) re-find each comment by its stored anchor text. Compatible
+editor integrations may do the same automatically and live as files change.
 
 If the heuristic can't place a comment it is marked ` + "`" + `orphaned` + "`" + ` (its anchor text was
 lost after edits). Because YOU made the edits, you often know exactly where the comment

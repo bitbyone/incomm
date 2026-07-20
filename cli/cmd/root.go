@@ -19,16 +19,18 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:           "incomm",
-	Short:         "Inline, line-anchored code-review comments for AI agents",
+	Short:         "Line-anchored context threads for humans and AI agents",
 	Version:       version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	Long: `incomm is the CLI companion to the incomm IntelliJ plugin.
+	Long: `incomm is an IDE-agnostic CLI for branch-scoped, line-anchored context
+threads shared between humans, AI agents, scripts and compatible editor/UI
+integrations.
 
 It reads and writes <project-root>/.incomm/notes_<branch>.json (or notes.json
 when git is unavailable) so an AI agent can list, read, add, reply to, resolve
-and remove line-anchored comments. Whatever the agent writes shows up inline in
-the IDE, right at the referenced line.
+and remove line-anchored comments. Compatible integrations can render the same
+shared state inline next to the referenced code.
 
 Notes are scoped to the current git branch. When you switch branches, incomm
 automatically switches to the corresponding notes file.`,

@@ -1,8 +1,8 @@
-// Command incomm is the CLI companion to the incomm IntelliJ plugin.
+// Command incomm is an IDE-agnostic CLI for line-anchored context threads.
 //
-// It reads and writes <project-root>/.incomm/notes.json, letting an AI agent
-// list, read, add, reply to, resolve and remove line-anchored code-review
-// comments. The human sees everything inline in the IDE.
+// It reads and writes branch-scoped files under <project-root>/.incomm/, letting
+// AI agents, scripts and compatible editor integrations list, read, add, reply
+// to, resolve and remove line-anchored comments.
 package main
 
 import "incomm/cmd"

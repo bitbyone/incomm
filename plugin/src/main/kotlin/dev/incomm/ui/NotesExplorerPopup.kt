@@ -53,14 +53,19 @@ object NotesExplorerPopup {
             cellRenderer = NoteListCellRenderer()
         }
         val search = SearchTextField(false)
-        val orphanedFilter = JBCheckBox("orphaned", true).apply {
+        val openFilter = JBCheckBox("open", true).apply {
             isOpaque = false
-            toolTipText = "Show orphaned threads (${if (SystemInfo.isMac) "\u2318O" else "Ctrl+O"})"
+            toolTipText = "Show open threads (${if (SystemInfo.isMac) "\u2318O" else "Ctrl+O"})"
             border = JBUI.Borders.emptyLeft(8)
         }
         val resolvedFilter = JBCheckBox("resolved", false).apply {
             isOpaque = false
-            toolTipText = "Show resolved threads too (${if (SystemInfo.isMac) "\u2318R" else "Ctrl+R"})"
+            toolTipText = "Show resolved threads (${if (SystemInfo.isMac) "\u2318R" else "Ctrl+R"})"
+            border = JBUI.Borders.emptyLeft(8)
+        }
+        val orphanedFilter = JBCheckBox("orphaned", true).apply {
+            isOpaque = false
+            toolTipText = "Show orphaned threads (${if (SystemInfo.isMac) "\u2318X" else "Ctrl+X"})"
             border = JBUI.Borders.emptyLeft(8)
         }
         val rightHost = JPanel(BorderLayout())
@@ -78,11 +83,14 @@ object NotesExplorerPopup {
         fun reload(preserveId: String?) {
             val query = search.text.trim()
             val matcher = if (query.isEmpty()) null else NameUtil.buildMatcher("*$query").build()
-            val includeResolved = resolvedFilter.isSelected
-            val includeOrphaned = orphanedFilter.isSelected
+            val showOpen = openFilter.isSelected
+            val showResolved = resolvedFilter.isSelected
+            val showOrphaned = orphanedFilter.isSelected
             val items = service.allNotes()
-                .filter { includeResolved || !it.resolved }
-                .filter { includeOrphaned || !it.orphaned }
+                // Resolution axis: pick which of open / resolved to show.
+                .filter { (showOpen && !it.resolved) || (showResolved && it.resolved) }
+                // Orphaned axis: hide orphaned threads unless included.
+                .filter { showOrphaned || !it.orphaned }
                 .filter { matcher == null || matcher.matches(searchableText(it)) }
                 .sortedWith(compareBy({ it.file }, { it.startLine }))
             model.clear()
@@ -133,6 +141,7 @@ object NotesExplorerPopup {
         // between that moves the whole popup window.
         val filters = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0)).apply {
             isOpaque = false
+            add(openFilter)
             add(resolvedFilter)
             add(orphanedFilter)
         }
@@ -190,20 +199,28 @@ object NotesExplorerPopup {
         }
 
         list.addListSelectionListener { showDetail() }
+        openFilter.addActionListener { reload(selected()?.id) }
         resolvedFilter.addActionListener { reload(selected()?.id) }
         orphanedFilter.addActionListener { reload(selected()?.id) }
-        // Cmd+R (Ctrl+R off macOS) toggles the resolved filter from anywhere in the popup.
+        // Cmd+O (Ctrl+O off macOS) toggles the open filter.
+        object : DumbAwareAction() {
+            override fun actionPerformed(e: AnActionEvent) = openFilter.doClick()
+        }.registerCustomShortcutSet(
+            CustomShortcutSet.fromString(if (SystemInfo.isMac) "meta O" else "control O"),
+            root,
+        )
+        // Cmd+R (Ctrl+R off macOS) toggles the resolved filter.
         object : DumbAwareAction() {
             override fun actionPerformed(e: AnActionEvent) = resolvedFilter.doClick()
         }.registerCustomShortcutSet(
             CustomShortcutSet.fromString(if (SystemInfo.isMac) "meta R" else "control R"),
             root,
         )
-        // Cmd+O (Ctrl+O off macOS) toggles the orphaned filter from anywhere in the popup.
+        // Cmd+X (Ctrl+X off macOS) toggles the orphaned filter.
         object : DumbAwareAction() {
             override fun actionPerformed(e: AnActionEvent) = orphanedFilter.doClick()
         }.registerCustomShortcutSet(
-            CustomShortcutSet.fromString(if (SystemInfo.isMac) "meta O" else "control O"),
+            CustomShortcutSet.fromString(if (SystemInfo.isMac) "meta X" else "control X"),
             root,
         )
         search.addDocumentListener(object : DocumentListener {
@@ -255,9 +272,10 @@ object NotesExplorerPopup {
     private fun hintBar(): JComponent {
         val o = if (SystemInfo.isMac) "\u2318O" else "Ctrl+O"
         val r = if (SystemInfo.isMac) "\u2318R" else "Ctrl+R"
+        val x = if (SystemInfo.isMac) "\u2318X" else "Ctrl+X"
         return JBLabel(
             "<html><small>&nbsp;\u2191\u2193 navigate &nbsp;\u00B7&nbsp; \u23CE open &nbsp;\u00B7&nbsp; " +
-                "type to filter &nbsp;\u00B7&nbsp; $o orphaned &nbsp;\u00B7&nbsp; $r resolved</small></html>"
+                "type to filter &nbsp;\u00B7&nbsp; $o open &nbsp;\u00B7&nbsp; $r resolved &nbsp;\u00B7&nbsp; $x orphaned</small></html>"
         ).apply { border = JBUI.Borders.empty(3, 6) }
     }
 

@@ -88,6 +88,19 @@ class NoteInlayController(
     }
 
     /**
+     * Force every card to be disposed and rebuilt from scratch. Used on theme /
+     * editor-scheme changes: a plain [refresh] keeps existing inlays and only
+     * repaints, but each host's background is captured at creation from the
+     * editor scheme, so the old (now wrong) colour would stick. Recreating the
+     * inlays picks up the new scheme background.
+     */
+    fun hardRefresh() = keepScroll {
+        cards.values.forEach { if (it.inlay.isValid) Disposer.dispose(it.inlay) }
+        cards.clear()
+        rebuildInlays()
+    }
+
+    /**
      * Update just the location header of every card in place (no inlay rebuild),
      * after live re-anchoring moved notes. Cheap and viewport-safe.
      */

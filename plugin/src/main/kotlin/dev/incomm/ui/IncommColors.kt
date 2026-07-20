@@ -29,8 +29,8 @@ object IncommColors {
 
     // ---- theme defaults (used when no user override is set) ----------------
 
-    fun themeUserBubbleBg(): Color = JBUI.CurrentTheme.Banner.INFO_BACKGROUND
-    fun themeAgentBubbleBg(): Color = JBUI.CurrentTheme.Banner.SUCCESS_BACKGROUND
+    fun themeUserBubbleBg(): Color = bubbleTint(JBUI.CurrentTheme.Banner.INFO_BORDER_COLOR)
+    fun themeAgentBubbleBg(): Color = bubbleTint(JBUI.CurrentTheme.Banner.SUCCESS_BORDER_COLOR)
     fun themeUserName(): Color = JBUI.CurrentTheme.Link.Foreground.ENABLED
     fun themeAgentName(): Color {
         // SUCCESS_BORDER_COLOR can be low-contrast on the success background in
@@ -40,6 +40,20 @@ object IncommColors {
     }
     fun themeCommentFg(): Color = UIUtil.getLabelForeground()
     fun themeStatusFg(): Color = UIUtil.getContextHelpForeground()
+
+    /** True when the IDE is on a light theme (panel background is light). */
+    private fun isLight(): Boolean = !ColorUtil.isDark(UIUtil.getPanelBackground())
+
+    /**
+     * A bubble background: the panel surface tinted toward [accent]. The
+     * semantic Banner backgrounds are almost white in light themes and blend
+     * into the surface, so we tint more strongly (esp. in light themes) for a
+     * clearly visible, still-subtle card.
+     */
+    private fun bubbleTint(accent: Color): Color {
+        val surface = UIUtil.getPanelBackground()
+        return ColorUtil.mix(surface, accent, if (isLight()) 0.16 else 0.13)
+    }
 
     // ---- thread bubbles (author-coded; user-overridable) -------------------
 
@@ -72,10 +86,22 @@ object IncommColors {
 
     // ---- explorer list row backgrounds -------------------------------------
 
-    val orphanedRowBg: Color get() = JBUI.CurrentTheme.Banner.ERROR_BACKGROUND
-    val resolvedRowBg: Color get() = JBUI.CurrentTheme.Banner.SUCCESS_BACKGROUND
-    val orphanedRowBgSelected: Color get() = JBUI.CurrentTheme.Banner.ERROR_BORDER_COLOR
-    val resolvedRowBgSelected: Color get() = JBUI.CurrentTheme.Banner.SUCCESS_BORDER_COLOR
+    val orphanedRowBg: Color get() = rowTint(stateOrphaned, selected = false)
+    val resolvedRowBg: Color get() = rowTint(stateResolved, selected = false)
+    val orphanedRowBgSelected: Color get() = rowTint(stateOrphaned, selected = true)
+    val resolvedRowBgSelected: Color get() = rowTint(stateResolved, selected = true)
+
+    /** A list-row background tinted toward [accent], stronger when [selected]. */
+    private fun rowTint(accent: Color, selected: Boolean): Color {
+        val surface = UIUtil.getListBackground()
+        val amount = when {
+            selected && isLight() -> 0.34
+            selected -> 0.30
+            isLight() -> 0.15
+            else -> 0.13
+        }
+        return ColorUtil.mix(surface, accent, amount)
+    }
 
     /**
      * The colour the editor paints under the caret's line; preview snippets use

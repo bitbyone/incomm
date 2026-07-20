@@ -214,10 +214,34 @@ class IncommEditorTracker(private val project: Project) : Disposable {
             },
         )
 
+        // Rebuild inlays when the IDE theme or editor colour scheme changes, so
+        // card/bubble colours (and the cached inlay-host backgrounds) update.
+        val appConnection = ApplicationManager.getApplication().messageBus.connect(this)
+        appConnection.subscribe(
+            com.intellij.ide.ui.LafManagerListener.TOPIC,
+            com.intellij.ide.ui.LafManagerListener { onThemeChanged() },
+        )
+        appConnection.subscribe(
+            com.intellij.openapi.editor.colors.EditorColorsManager.TOPIC,
+            com.intellij.openapi.editor.colors.EditorColorsListener { onThemeChanged() },
+        )
+
         // Attach to editors that are already open (e.g. restored on project load).
         for (editor in factory.allEditors) {
             if (editor.project == project) onEditorCreated(editor)
         }
+    }
+
+    /** Full rebuild after a theme/scheme change (recreates inlays for new colours). */
+    private fun onThemeChanged() {
+        if (!started) return
+        ApplicationManager.getApplication().invokeLater({
+            if (project.isDisposed) return@invokeLater
+            for ((document, entry) in entries) rebuild(document, entry)
+            for (controller in inlayControllers.values) controller.hardRefresh()
+            for (controller in editorControllers.values) controller.refresh()
+            for (controller in rangeControllers.values) controller.refresh()
+        }, project.disposed)
     }
 
     /** Register `.incomm/` (and its parent) with the native watcher. */

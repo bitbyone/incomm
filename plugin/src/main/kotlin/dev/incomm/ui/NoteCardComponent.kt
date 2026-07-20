@@ -64,7 +64,7 @@ class NoteCardComponent(
     private val cardHoverAdapter = object : MouseAdapter() {
         override fun mouseEntered(e: MouseEvent) = onHover(true)
         override fun mouseExited(e: MouseEvent) {
-            if (getMousePosition(true) == null) onHover(false)
+            if (!pointerStillInside(this@NoteCardComponent, e)) onHover(false)
         }
     }
 
@@ -282,7 +282,7 @@ class NoteCardComponent(
         val adapter = object : MouseAdapter() {
             override fun mouseEntered(e: MouseEvent) = set(true)
             override fun mouseExited(e: MouseEvent) {
-                if (bubble.getMousePosition(true) == null) set(false)
+                if (!pointerStillInside(bubble, e)) set(false)
             }
             private fun set(on: Boolean) {
                 if (bubble.hovered == on) return
@@ -293,6 +293,17 @@ class NoteCardComponent(
             }
         }
         addRecursively(bubble, adapter)
+    }
+
+    /**
+     * Whether the pointer that triggered [e] is still within [target]'s bounds.
+     * Converts the event point into [target] coordinates and does an explicit
+     * bounds check — reliable on every edge (unlike `getMousePosition`, which
+     * was unreliable at the bottom of an embedded inlay, leaving hover stuck on).
+     */
+    private fun pointerStillInside(target: JComponent, e: MouseEvent): Boolean {
+        val p = SwingUtilities.convertPoint(e.component, e.point, target)
+        return p.x >= 0 && p.y >= 0 && p.x < target.width && p.y < target.height
     }
 
     private fun focus(c: JComponent) {

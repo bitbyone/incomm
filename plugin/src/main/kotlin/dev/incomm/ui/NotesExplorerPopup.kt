@@ -11,6 +11,7 @@ import com.intellij.psi.codeStyle.NameUtil
 import com.intellij.ui.JBColor
 import com.intellij.ui.JBSplitter
 import com.intellij.ui.SearchTextField
+import com.intellij.ui.WindowMoveListener
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
@@ -51,12 +52,12 @@ object NotesExplorerPopup {
             cellRenderer = NoteListCellRenderer()
         }
         val search = SearchTextField(false)
-        val orphanedFilter = JBCheckBox("Include orphaned", true).apply {
+        val orphanedFilter = JBCheckBox("orphaned", true).apply {
             isOpaque = false
             toolTipText = "Show orphaned threads (${if (SystemInfo.isMac) "\u2318O" else "Ctrl+O"})"
             border = JBUI.Borders.emptyLeft(8)
         }
-        val resolvedFilter = JBCheckBox("Include resolved", false).apply {
+        val resolvedFilter = JBCheckBox("resolved", false).apply {
             isOpaque = false
             toolTipText = "Show resolved threads too (${if (SystemInfo.isMac) "\u2318R" else "Ctrl+R"})"
             border = JBUI.Borders.emptyLeft(8)
@@ -127,20 +128,33 @@ object NotesExplorerPopup {
             preferredSize = Dimension(960, 560)
         }
 
-        // Search-Everywhere-style header: the search field with the orphaned and
-        // resolved filters on the right.
-        val filters = JPanel(FlowLayout(FlowLayout.RIGHT, 0, 0)).apply {
+        // Header: a fixed-width search field on the left, the resolved/orphaned
+        // filters vertically centred on the right, and a draggable empty strip in
+        // between that moves the whole popup window.
+        val filters = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0)).apply {
             isOpaque = false
-            add(orphanedFilter)
             add(resolvedFilter)
+            add(orphanedFilter)
+        }
+        // ~6 words wide so it doesn't stretch to the checkboxes.
+        search.preferredSize = Dimension(JBUI.scale(220), search.preferredSize.height)
+        val searchWrap = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+            isOpaque = false
+            add(search)
         }
         val header = JPanel(BorderLayout()).apply {
-            add(search, BorderLayout.CENTER)
+            add(searchWrap, BorderLayout.WEST)
             add(filters, BorderLayout.EAST)
             border = JBUI.Borders.compound(
                 JBUI.Borders.customLine(JBColor.border(), 0, 0, 1, 0),
-                JBUI.Borders.empty(2, 4, 2, 6),
+                JBUI.Borders.empty(3, 6, 3, 8),
             )
+        }
+        // Drag the header's empty middle to move the popup (search/checkboxes keep
+        // their own mouse behaviour, so only the gap between them acts as a handle).
+        WindowMoveListener(header).apply {
+            header.addMouseListener(this)
+            header.addMouseMotionListener(this)
         }
         val root = JPanel(BorderLayout()).apply {
             add(header, BorderLayout.NORTH)

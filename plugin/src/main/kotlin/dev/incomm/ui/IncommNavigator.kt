@@ -10,10 +10,13 @@ import dev.incomm.store.IncommPaths
 object IncommNavigator {
     fun open(project: Project, note: Note): Boolean {
         val vf = IncommPaths.findVirtualFile(project, note.file) ?: return false
-        val doc = FileDocumentManager.getInstance().getDocument(vf)
-        val lastLine = ((doc?.lineCount ?: 0) - 1).coerceAtLeast(0)
-        val line = (note.startLine - 1).coerceIn(0, lastLine)
-        val column = firstNonBlankColumn(doc, line)
+        val (line, column) = com.intellij.openapi.application.runReadAction<Pair<Int, Int>> {
+            val doc = FileDocumentManager.getInstance().getDocument(vf)
+            val lastLine = ((doc?.lineCount ?: 0) - 1).coerceAtLeast(0)
+            val line = (note.startLine - 1).coerceIn(0, lastLine)
+            val column = firstNonBlankColumn(doc, line)
+            Pair(line, column)
+        }
         OpenFileDescriptor(project, vf, line, column).navigate(true)
         return true
     }

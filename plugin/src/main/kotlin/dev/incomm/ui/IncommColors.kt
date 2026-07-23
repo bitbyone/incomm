@@ -80,8 +80,8 @@ object IncommColors {
 
     // ---- note-state accents (gutter band) ----------------------------------
 
-    val stateOrphaned: Color get() = JBUI.CurrentTheme.Banner.ERROR_BORDER_COLOR
-    val stateResolved: Color get() = JBUI.CurrentTheme.Banner.SUCCESS_BORDER_COLOR
+    val stateOrphaned: Color get() = JBColor.ORANGE
+    val stateResolved: Color get() = JBColor.GREEN
     val stateOpen: Color get() = JBUI.CurrentTheme.Banner.INFO_BORDER_COLOR
 
     // ---- explorer list row backgrounds -------------------------------------

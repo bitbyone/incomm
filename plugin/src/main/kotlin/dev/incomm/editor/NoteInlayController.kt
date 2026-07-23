@@ -217,6 +217,7 @@ class NoteInlayController(
             onResolve = { resolved -> resolveNote(note.id, resolved) },
             onDelete = { deleteNote(note.id) },
             onDeleteReply = { replyId -> deleteReply(note.id, replyId) },
+            onEdit = { text, replyId -> editMessage(note.id, replyId, text) },
             onHover = { hovered ->
                 IncommEditorTracker.getInstance(project)
                     .setHoveredNote(editor, if (hovered) note.id else null)
@@ -339,6 +340,17 @@ class NoteInlayController(
     /** Delete one reply, re-rendering its parent card in place (no full refresh). */
     private fun deleteReply(noteId: String, replyId: String) {
         NotesService.getInstance(project).removeReply(noteId, replyId)
+        updateCardInPlace(noteId)
+    }
+
+    /** Edit a comment or reply, updating this editor in place (no full refresh). */
+    private fun editMessage(noteId: String, replyId: String?, text: String) {
+        val service = NotesService.getInstance(project)
+        if (replyId == null) {
+            service.updateContent(noteId, text)
+        } else {
+            service.updateReply(noteId, replyId, text)
+        }
         updateCardInPlace(noteId)
     }
 

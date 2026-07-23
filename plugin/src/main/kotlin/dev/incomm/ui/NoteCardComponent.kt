@@ -48,6 +48,7 @@ class NoteCardComponent(
     private val onResolve: (Boolean) -> Unit,
     private val onDelete: () -> Unit = {},
     private val onDeleteReply: (String) -> Unit = {},
+    private val onEdit: (String, String?) -> Unit = { _, _ -> },
     private val onHover: (Boolean) -> Unit,
     private val onContentResized: () -> Unit = {},
 ) : JPanel(BorderLayout()) {
@@ -147,12 +148,12 @@ class NoteCardComponent(
 
     private fun titleHtml(note: Note): String {
         val range = if (note.endLine != note.startLine) "${note.startLine}\u2013${note.endLine}" else "${note.startLine}"
-        val state = when {
-            note.orphaned -> "orphaned"
-            note.resolved -> "resolved"
-            else -> "open"
+        val (stateText, stateColor) = when {
+            note.orphaned -> "<b>orphaned</b>" to IncommColors.stateOrphaned
+            note.resolved -> "<b>resolved</b>" to IncommColors.stateResolved
+            else -> "open" to IncommColors.muted
         }
-        return "<html><b>L$range</b>&nbsp;&nbsp;<font color='${ThreadUi.hex(IncommColors.muted)}'>$state</font></html>"
+        return "<html><b>L$range</b>&nbsp;&nbsp;<font color='${ThreadUi.hex(stateColor)}'>$stateText</font></html>"
     }
 
     private fun buildToolbar(note: Note) {
@@ -263,12 +264,11 @@ class NoteCardComponent(
     private fun saveEdit(key: String, replyId: String?, text: String) {
         val trimmed = text.trim()
         if (trimmed.isNotEmpty()) {
-            val service = NotesService.getInstance(project)
-            if (key == KEY_ORIGINAL) service.updateContent(noteId, trimmed)
-            else if (replyId != null) service.updateReply(noteId, replyId, trimmed)
+            onEdit(trimmed, replyId)
+        } else {
+            editingKey = null
+            rebuild()
         }
-        editingKey = null
-        rebuild()
     }
 
     private fun deleteMessage(key: String, replyId: String?) {

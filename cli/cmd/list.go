@@ -80,9 +80,9 @@ func formatNoteLine(n model.Note) string {
 	state := "open"
 	switch {
 	case n.Orphaned:
-		state = "orphn"
+		state = "orphaned"
 	case n.Resolved:
-		state = "done "
+		state = "resolved"
 	}
 	loc := fmt.Sprintf("%s:%d", n.File, n.StartLine)
 	if n.EndLine != n.StartLine {
@@ -96,7 +96,7 @@ func formatNoteLine(n model.Note) string {
 	if len(n.Replies) > 0 {
 		replies = fmt.Sprintf(" (%d repl.)", len(n.Replies))
 	}
-	return fmt.Sprintf("%-8s [%s] %-28s %s%s", n.ID, state, loc, content, replies)
+	return fmt.Sprintf("%-8s [%-8s] %-28s %s%s", n.ID, state, loc, content, replies)
 }
 
 func init() {

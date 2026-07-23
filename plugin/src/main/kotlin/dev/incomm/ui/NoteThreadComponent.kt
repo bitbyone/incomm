@@ -78,6 +78,12 @@ class NoteThreadComponent(
         rebuild()
     }
 
+    fun startReply() {
+        addingReply = true
+        editingKey = null
+        rebuild()
+    }
+
     fun rebuild() {
         val note = NotesService.getInstance(project).find(noteId)
         if (note == null) {
@@ -273,6 +279,7 @@ class NoteThreadComponent(
             val editor = editorArea(text)
             icons.add(iconButton(IncommIcons.CHECK, "Save") { saveEdit(key, replyId, editor.text) })
             icons.add(iconButton(IncommIcons.CANCEL, "Cancel") { editingKey = null; rebuild() })
+            registerEditShortcuts(editor, { saveEdit(key, replyId, editor.text) }, { editingKey = null; rebuild() })
             headerRow.add(icons, BorderLayout.EAST)
             card.add(headerRow)
             card.add(editor)
@@ -306,6 +313,21 @@ class NoteThreadComponent(
             rebuild()
         })
         icons.add(iconButton(IncommIcons.CANCEL, "Cancel") { addingReply = false; rebuild() })
+        
+        registerEditShortcuts(
+            editor,
+            {
+                val t = editor.text.trim()
+                if (t.isNotEmpty()) {
+                    NotesService.getInstance(project).addReply(noteId, t, AUTHOR_USER)
+                    onChanged()
+                }
+                addingReply = false
+                rebuild()
+            },
+            { addingReply = false; rebuild() }
+        )
+        
         headerRow.add(icons, BorderLayout.EAST)
         card.add(headerRow)
         card.add(editor)
@@ -335,6 +357,16 @@ class NoteThreadComponent(
             onChanged()
             rebuild()
         }
+    }
+
+    private fun registerEditShortcuts(field: JComponent, save: () -> Unit, cancel: () -> Unit) {
+        object : com.intellij.openapi.project.DumbAwareAction() {
+            override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) = save()
+        }.registerCustomShortcutSet(com.intellij.openapi.actionSystem.CustomShortcutSet.fromString("control ENTER", "meta ENTER"), field)
+        
+        object : com.intellij.openapi.project.DumbAwareAction() {
+            override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) = cancel()
+        }.registerCustomShortcutSet(com.intellij.openapi.actionSystem.CommonShortcuts.ESCAPE, field)
     }
 
     // ---- small builders -----------------------------------------------------

@@ -192,6 +192,23 @@ object NotesExplorerPopup {
             IncommNavigator.open(project, note)
         }
 
+        fun deleteSelected() {
+            val note = selected() ?: return
+            service.removeNote(note.id)
+            if (service.isEmpty()) popup.cancel() else reload(null)
+        }
+
+        fun resolveSelected() {
+            val note = selected() ?: return
+            service.setResolved(note.id, !note.resolved)
+            reload(note.id)
+        }
+
+        fun startReplySelected() {
+            val component = rightHost.components.firstOrNull() as? NoteThreadComponent
+            component?.startReply()
+        }
+
         // Return focus to the search field, caret at the end.
         fun focusSearch() {
             search.textEditor.requestFocusInWindow()
@@ -248,8 +265,25 @@ object NotesExplorerPopup {
         })
         list.addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
+                val isModifier = if (SystemInfo.isMac) e.isMetaDown else e.isControlDown
                 when (e.keyCode) {
                     KeyEvent.VK_ENTER -> openSelected()
+                    KeyEvent.VK_DELETE, KeyEvent.VK_BACK_SPACE -> deleteSelected()
+                    KeyEvent.VK_R -> {
+                        if (e.isShiftDown && isModifier) {
+                            resolveSelected()
+                            e.consume()
+                        } else if (!e.isControlDown && !e.isMetaDown && !e.isAltDown) {
+                            startReplySelected()
+                            e.consume()
+                        }
+                    }
+                    KeyEvent.VK_D -> {
+                        if (e.isShiftDown && isModifier) {
+                            deleteSelected()
+                            e.consume()
+                        }
+                    }
                     KeyEvent.VK_J -> {
                         if (e.isControlDown || e.isMetaDown || e.isAltDown) return
                         if (list.selectedIndex < model.size - 1) list.selectedIndex += 1
@@ -272,12 +306,16 @@ object NotesExplorerPopup {
     }
 
     private fun hintBar(): JComponent {
-        val o = if (SystemInfo.isMac) "\u2318O" else "Ctrl+O"
-        val r = if (SystemInfo.isMac) "\u2318R" else "Ctrl+R"
-        val x = if (SystemInfo.isMac) "\u2318X" else "Ctrl+X"
-        val f = if (SystemInfo.isMac) "\u2318F" else "Ctrl+F"
+        val cmd = if (SystemInfo.isMac) "\u2318" else "Ctrl+"
+        val o = "${cmd}O"
+        val r = "${cmd}R"
+        val x = "${cmd}X"
+        val f = "${cmd}F"
+        val dDel = "Del/${cmd}\u21E7D"
+        val dRes = "${cmd}\u21E7R"
         return JBLabel(
-            "<html><small>&nbsp;\u2191\u2193 j/k &nbsp;\u00B7&nbsp; \u23CE go to &nbsp;\u00B7&nbsp; " +
+            "<html><small>&nbsp;\u2191\u2193 j/k &nbsp;\u00B7&nbsp; \u23CE go &nbsp;\u00B7&nbsp; r reply &nbsp;\u00B7&nbsp; " +
+                "$dDel del &nbsp;\u00B7&nbsp; $dRes res &nbsp;\u00B7&nbsp; " +
                 "$f search &nbsp;\u00B7&nbsp; $o open &nbsp;\u00B7&nbsp; $r resolved &nbsp;\u00B7&nbsp; $x orphaned</small></html>"
         ).apply { border = JBUI.Borders.empty(3, 6) }
     }

@@ -331,36 +331,10 @@ class IncommEditorTracker(private val project: Project) : Disposable {
     }
 
     private fun refreshAll() {
-        // Preserve each editor's exact pixel scroll offset across the rebuild.
-        // Deterministic and drift-free (see NoteInlayController.keepScroll): a
-        // line/caret-anchored keeper drifted once several cards existed, making
-        // every add after the first jump.
-        val editors = EditorFactory.getInstance().allEditors
-            .filter { it.project == project && !it.isDisposed }
-        val saved = editors.associateWith { it.scrollingModel.verticalScrollOffset }
-
         for ((document, entry) in entries) rebuild(document, entry)
         for (controller in editorControllers.values) controller.refresh()
         for (controller in inlayControllers.values) controller.refresh()
         for (controller in rangeControllers.values) controller.refresh()
-
-        fun restore() {
-            for ((ed, offset) in saved) {
-                if (ed.isDisposed) continue
-                val sm = ed.scrollingModel
-                if (sm.verticalScrollOffset == offset) continue
-                sm.disableAnimation()
-                try {
-                    sm.scrollVertically(offset)
-                } finally {
-                    sm.enableAnimation()
-                }
-            }
-        }
-        restore()
-        ApplicationManager.getApplication().invokeLater({
-            if (!project.isDisposed) restore()
-        }, ModalityState.any())
     }
 
     private fun rebuild(document: Document, entry: DocEntry) {

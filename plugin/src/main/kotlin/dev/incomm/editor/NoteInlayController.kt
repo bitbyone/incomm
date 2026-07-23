@@ -53,7 +53,7 @@ class NoteInlayController(
     parent: Disposable,
 ) : Disposable {
 
-    private class CardEntry(val inlay: Inlay<*>, val card: NoteCardComponent)
+    private class CardEntry(val inlay: Inlay<*>, val card: NoteCardComponent, var note: Note)
 
     private val cards = LinkedHashMap<String, CardEntry>()
     private var composeInlay: Inlay<*>? = null
@@ -161,18 +161,19 @@ class NoteInlayController(
 
         // Drop cards that are gone/hidden; keep the rest so the page doesn't churn.
         cards.keys.toList().forEach { id ->
-            if (id !in desiredIds) cards.remove(id)?.let { if (it.inlay.isValid) Disposer.dispose(it.inlay) }
+            if (desired.none { it.id == id } || IncommEditorTracker.getInstance(project).isNoteHidden(id)) {
+                cards.remove(id)?.let { if (it.inlay.isValid) Disposer.dispose(it.inlay) }
+            }
         }
-        // Refresh existing cards in place; add the genuinely new ones. If a note
-        // moved to a different line without an in-editor edit (e.g. its anchor was
-        // changed via the CLI), the block inlay's offset is stale, so re-add it at
-        // the new line instead of merely refreshing its contents.
         val doc = editor.document
         val lineCount = doc.lineCount
         for (note in desired) {
             val entry = cards[note.id]
             if (entry != null && entry.inlay.isValid && inlayAtNoteLine(entry.inlay, note, lineCount)) {
-                entry.card.rebuild()
+                if (entry.note != note) {
+                    entry.card.rebuild()
+                    entry.note = note
+                }
             } else {
                 cards.remove(note.id)?.let { if (it.inlay.isValid) Disposer.dispose(it.inlay) }
                 addCard(note)
@@ -258,7 +259,7 @@ class NoteInlayController(
             offset,
         )
         EditorEmbeddedComponentManager.getInstance().addComponent(ex, host, props)
-            ?.let { cards[note.id] = CardEntry(it, card) }
+            ?.let { cards[note.id] = CardEntry(it, card, note) }
     }
 
     /**

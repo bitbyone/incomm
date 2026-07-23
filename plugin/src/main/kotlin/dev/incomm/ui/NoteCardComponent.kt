@@ -119,6 +119,11 @@ class NoteCardComponent(
     }
 
     private fun rebuildFor(note: Note) {
+        val oldSize = preferredSize
+        if (body.componentCount > 0) {
+            preferredSize = oldSize
+        }
+        
         focusAfterBuild = null
 
         titleLabel.text = titleHtml(note)
@@ -143,7 +148,13 @@ class NoteCardComponent(
 
         revalidate()
         repaint()
-        SwingUtilities.invokeLater { focusAfterBuild?.let { focus(it) } }
+        SwingUtilities.invokeLater {
+            if (preferredSize == oldSize) {
+                preferredSize = null
+                revalidate()
+            }
+            focusAfterBuild?.let { focus(it) }
+        }
     }
 
     private fun titleHtml(note: Note): String {

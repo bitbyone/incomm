@@ -314,8 +314,8 @@ object NotesExplorerPopup {
         val dDel = "Del/${cmd}\u21E7D"
         val dRes = "${cmd}\u21E7R"
         return JBLabel(
-            "<html><small>&nbsp;\u2191\u2193 j/k &nbsp;\u00B7&nbsp; \u23CE go &nbsp;\u00B7&nbsp; r reply &nbsp;\u00B7&nbsp; " +
-                "$dDel del &nbsp;\u00B7&nbsp; $dRes res &nbsp;\u00B7&nbsp; " +
+            "<html><small>&nbsp;\u2191\u2193 j/k &nbsp;\u00B7&nbsp; \u23CE go to &nbsp;\u00B7&nbsp; r reply &nbsp;\u00B7&nbsp; " +
+                "$dDel delete &nbsp;\u00B7&nbsp; $dRes resolve &nbsp;\u00B7&nbsp; " +
                 "$f search &nbsp;\u00B7&nbsp; $o open &nbsp;\u00B7&nbsp; $r resolved &nbsp;\u00B7&nbsp; $x orphaned</small></html>"
         ).apply { border = JBUI.Borders.empty(3, 6) }
     }

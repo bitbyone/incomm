@@ -331,10 +331,42 @@ class IncommEditorTracker(private val project: Project) : Disposable {
     }
 
     private fun refreshAll() {
+        val editors = EditorFactory.getInstance().allEditors
+            .filter { it.project == project && !it.isDisposed }
+            
+        val saved = editors.associateWith { editor ->
+            val visibleArea = editor.scrollingModel.visibleArea
+            val logicalPos = editor.xyToLogicalPosition(visibleArea.location)
+            val yOffsetWithinLine = visibleArea.y - editor.logicalPositionToXY(logicalPos).y
+            Pair(logicalPos, yOffsetWithinLine)
+        }
+
         for ((document, entry) in entries) rebuild(document, entry)
         for (controller in editorControllers.values) controller.refresh()
         for (controller in inlayControllers.values) controller.refresh()
         for (controller in rangeControllers.values) controller.refresh()
+
+        fun restore() {
+            for ((editor, state) in saved) {
+                if (editor.isDisposed) continue
+                val (logicalPos, yOffsetWithinLine) = state
+                val targetY = editor.logicalPositionToXY(logicalPos).y + yOffsetWithinLine
+                
+                val sm = editor.scrollingModel
+                if (sm.verticalScrollOffset == targetY) continue
+                sm.disableAnimation()
+                try {
+                    sm.scrollVertically(targetY)
+                } finally {
+                    sm.enableAnimation()
+                }
+            }
+        }
+        
+        restore()
+        ApplicationManager.getApplication().invokeLater({
+            if (!project.isDisposed) restore()
+        }, ModalityState.any())
     }
 
     private fun rebuild(document: Document, entry: DocEntry) {

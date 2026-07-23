@@ -133,7 +133,7 @@ class IncommConfigurable : Configurable {
     private fun refreshOpenEditors() {
         for (project in ProjectManager.getInstance().openProjects) {
             if (project.isDisposed) continue
-            project.getServiceIfCreated(IncommEditorTracker::class.java)?.refreshUi()
+            project.getServiceIfCreated(IncommEditorTracker::class.java)?.updateSettings()
         }
     }
 }

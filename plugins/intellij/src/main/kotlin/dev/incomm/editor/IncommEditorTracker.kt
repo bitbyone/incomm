@@ -175,7 +175,7 @@ class IncommEditorTracker(private val project: Project) : Disposable {
             IncommNotesListener.TOPIC,
             IncommNotesListener {
                 ApplicationManager.getApplication().invokeLater(
-                    { if (!project.isDisposed) refreshAll() },
+                    { if (!project.isDisposed) refreshAll(false) },
                     project.disposed,
                 )
             },
@@ -214,8 +214,6 @@ class IncommEditorTracker(private val project: Project) : Disposable {
             },
         )
 
-        // Rebuild inlays when the IDE theme or editor colour scheme changes, so
-        // card/bubble colours (and the cached inlay-host backgrounds) update.
         val appConnection = ApplicationManager.getApplication().messageBus.connect(this)
         appConnection.subscribe(
             com.intellij.ide.ui.LafManagerListener.TOPIC,
@@ -325,12 +323,17 @@ class IncommEditorTracker(private val project: Project) : Disposable {
         }
     }
 
-    /** Rebuild every editor's incomm UI (e.g. after the settings colours changed). */
+    /** Rebuild every editor's incomm UI (e.g. after the notes model reloaded). */
     fun refreshUi() {
-        if (started) refreshAll()
+        if (started) refreshAll(rebuildCards = false)
     }
 
-    private fun refreshAll() {
+    /** Rebuild every editor's incomm UI and force cards to re-render (e.g. after settings change). */
+    fun updateSettings() {
+        if (started) refreshAll(rebuildCards = true)
+    }
+
+    private fun refreshAll(rebuildCards: Boolean) {
         val editors = EditorFactory.getInstance().allEditors
             .filter { it.project == project && !it.isDisposed }
             
@@ -343,7 +346,7 @@ class IncommEditorTracker(private val project: Project) : Disposable {
 
         for ((document, entry) in entries) rebuild(document, entry)
         for (controller in editorControllers.values) controller.refresh()
-        for (controller in inlayControllers.values) controller.refresh()
+        for (controller in inlayControllers.values) controller.refresh(rebuildCards)
         for (controller in rangeControllers.values) controller.refresh()
 
         fun restore() {

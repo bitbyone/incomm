@@ -79,12 +79,12 @@ class NoteInlayController(
      */
     private var skipNextRebuild = false
 
-    fun refresh() {
+    fun refresh(rebuildCards: Boolean = false) {
         if (skipNextRebuild) {
             skipNextRebuild = false
             return
         }
-        rebuild()
+        rebuild(rebuildCards)
     }
 
     /**
@@ -110,7 +110,7 @@ class NoteInlayController(
         }
     }
 
-    private fun rebuild() = keepScroll { rebuildInlays() }
+    private fun rebuild(rebuildCards: Boolean = false) = keepScroll { rebuildInlays(rebuildCards) }
 
     /**
      * Keep the editor's viewport fixed while inlays are added/removed by
@@ -149,7 +149,7 @@ class NoteInlayController(
         override fun scrollRectToVisible(aRect: Rectangle) { /* no-op */ }
     }
 
-    private fun rebuildInlays() {
+    private fun rebuildInlays(rebuildCards: Boolean = false) {
         disposeCompose()
         val tracker = IncommEditorTracker.getInstance(project)
         // Visibility is driven purely by hiddenNotes; "hide all" adds every id to
@@ -170,7 +170,7 @@ class NoteInlayController(
         for (note in desired) {
             val entry = cards[note.id]
             if (entry != null && entry.inlay.isValid && inlayAtNoteLine(entry.inlay, note, lineCount)) {
-                if (entry.note != note) {
+                if (rebuildCards || entry.note != note) {
                     entry.card.rebuild()
                     entry.note = note
                 }

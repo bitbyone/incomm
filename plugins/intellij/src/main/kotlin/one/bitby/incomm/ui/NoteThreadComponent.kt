@@ -1,0 +1,416 @@
+package one.bitby.incomm.ui
+
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.editor.ex.EditorEx
+import com.intellij.openapi.editor.markup.HighlighterLayer
+import com.intellij.openapi.editor.markup.TextAttributes
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileTypes.FileType
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.TextRange
+import com.intellij.ui.EditorTextField
+import com.intellij.ui.InplaceButton
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTextArea
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import one.bitby.incomm.model.AUTHOR_USER
+import one.bitby.incomm.model.Note
+import one.bitby.incomm.store.IncommPaths
+import one.bitby.incomm.store.NotesService
+import java.awt.BorderLayout
+import java.awt.FlowLayout
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import javax.swing.Icon
+import javax.swing.JComponent
+import javax.swing.JPanel
+import javax.swing.ScrollPaneConstants
+import javax.swing.SwingUtilities
+
+/**
+ * Interactive, chat-like thread for a single note: the original comment and each
+ * reply as a rounded, colour-coded bubble. Each user-authored message has hover
+ * edit/delete icons (in-place editing with check/cancel); global actions (go to,
+ * resolve/reopen, reply, delete) sit as icons in the top-right. Used by both the
+ * gutter-icon popup and the explorer's right pane so they look identical.
+ */
+class NoteThreadComponent(
+    private val project: Project,
+    private val noteId: String,
+    private val onChanged: () -> Unit,
+    private val onNoteDeleted: () -> Unit,
+) : JPanel(BorderLayout()) {
+
+    private val headerLabel = JBLabel()
+    private val toolbar = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
+    private val previewHost = JPanel(BorderLayout()).apply { isOpaque = false }
+    private val threadHost = JPanel(GridBagLayout()).apply {
+        isOpaque = false
+        border = JBUI.Borders.empty(10, 12)
+    }
+    private val scroll = JBScrollPane(
+        threadHost,
+        ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+        ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER,
+    ).apply { border = JBUI.Borders.empty() }
+
+    private var editingKey: String? = null
+    private var addingReply = false
+    private var focusAfterBuild: JComponent? = null
+
+    init {
+        isOpaque = true
+        background = UIUtil.getPanelBackground()
+        val header = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(6, 10, 6, 6)
+            add(headerLabel, BorderLayout.CENTER)
+            add(toolbar, BorderLayout.EAST)
+        }
+        val top = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            add(header, BorderLayout.NORTH)
+            add(previewHost, BorderLayout.SOUTH)
+        }
+        add(top, BorderLayout.NORTH)
+        add(scroll, BorderLayout.CENTER)
+        rebuild()
+    }
+
+    fun startReply() {
+        addingReply = true
+        editingKey = null
+        rebuild()
+    }
+
+    fun rebuild() {
+        val note = NotesService.getInstance(project).find(noteId)
+        if (note == null) {
+            onNoteDeleted()
+            return
+        }
+        focusAfterBuild = null
+
+        val state = when {
+            note.orphaned -> "orphaned"
+            note.resolved -> "resolved"
+            else -> "open"
+        }
+        headerLabel.text = "<html><b>${escape(note.location())}</b> &nbsp; <i>$state</i></html>"
+        buildToolbar(note)
+
+        previewHost.removeAll()
+        codePreview(note)?.let { previewHost.add(it, BorderLayout.CENTER) }
+        previewHost.revalidate()
+        previewHost.repaint()
+
+        threadHost.removeAll()
+        val gbc = GridBagConstraints().apply {
+            gridx = 0; gridy = 0; weightx = 1.0
+            fill = GridBagConstraints.HORIZONTAL
+            anchor = GridBagConstraints.NORTHWEST
+            insets = JBUI.insetsBottom(8)
+        }
+
+        threadHost.add(bubbleFor(note, KEY_ORIGINAL, note.author, note.authorTitle, note.createdAt, note.content, null, 0), gbc)
+        gbc.gridy++
+        for (reply in note.replies) {
+            threadHost.add(bubbleFor(note, keyReply(reply.id), reply.author, reply.authorTitle, reply.createdAt, reply.content, reply.id, JBUI.scale(18)), gbc)
+            gbc.gridy++
+        }
+        if (addingReply) {
+            threadHost.add(newReplyBubble(note), gbc)
+            gbc.gridy++
+        }
+
+        gbc.weighty = 1.0
+        gbc.fill = GridBagConstraints.BOTH
+        threadHost.add(JPanel().apply { isOpaque = false }, gbc)
+
+        threadHost.revalidate()
+        threadHost.repaint()
+        SwingUtilities.invokeLater {
+            focusAfterBuild?.requestFocusInWindow()
+            if (addingReply || editingKey != null) scroll.verticalScrollBar.value = scroll.verticalScrollBar.maximum
+        }
+    }
+
+    /**
+     * A read-only, syntax-highlighted preview of the note's lines.
+     *
+     * - **Single line**: the line ±2 context (5 lines). The note line is highlighted.
+     * - **Range ≤ 8 lines**: the full range +1 above +1 below. The range is highlighted.
+     * - **Range > 8 lines**: the full range, no extra context. All highlighted.
+     *
+     * A vertical scrollbar appears when the preview exceeds [MAX_VISIBLE_LINES]
+     * lines. Returns null if the file/document can't be resolved.
+     */
+    private fun codePreview(note: Note): JComponent? {
+        val info = runReadAction {
+            val vf = IncommPaths.findVirtualFile(project, note.file) ?: return@runReadAction null
+            val doc = FileDocumentManager.getInstance().getDocument(vf) ?: return@runReadAction null
+            val lineCount = doc.lineCount
+            if (lineCount == 0) return@runReadAction null
+
+            val start0 = (note.startLine - 1).coerceIn(0, lineCount - 1)
+            val end0 = (note.endLine - 1).coerceIn(start0, lineCount - 1)
+            val rangeSize = end0 - start0 + 1
+
+            val from: Int
+            val to: Int
+            val hlFrom: Int
+            val hlTo: Int
+            when {
+                rangeSize == 1 -> {
+                    // Single line: 2 above, 2 below (5 rows total).
+                    from = (start0 - 2).coerceAtLeast(0)
+                    to = (start0 + 2).coerceAtMost(lineCount - 1)
+                    hlFrom = start0
+                    hlTo = start0
+                }
+                rangeSize <= 8 -> {
+                    // Small range: show the whole range + 1 row above and below.
+                    from = (start0 - 1).coerceAtLeast(0)
+                    to = (end0 + 1).coerceAtMost(lineCount - 1)
+                    hlFrom = start0
+                    hlTo = end0
+                }
+                else -> {
+                    // Large range: show everything, no extra context.
+                    from = start0
+                    to = end0
+                    hlFrom = start0
+                    hlTo = end0
+                }
+            }
+            val text = doc.getText(TextRange(doc.getLineStartOffset(from), doc.getLineEndOffset(to)))
+            SnippetInfo(vf.fileType, text, from, to, hlFrom, hlTo)
+        } ?: return null
+
+        val visibleLines = info.to - info.from + 1
+        val needsScroll = visibleLines > MAX_VISIBLE_LINES
+        val snippet = EditorFactory.getInstance().createDocument(info.text)
+        val field = EditorTextField(snippet, project, info.fileType, /* viewer = */ true, /* oneLineMode = */ false)
+        field.setFontInheritedFromLAF(false)
+        field.addSettingsProvider { editor ->
+            editor.setVerticalScrollbarVisible(needsScroll)
+            editor.setHorizontalScrollbarVisible(false)
+            editor.setBorder(JBUI.Borders.empty())
+            editor.settings.apply {
+                isLineNumbersShown = false
+                isLineMarkerAreaShown = false
+                isFoldingOutlineShown = false
+                isRightMarginShown = false
+                isCaretRowShown = false
+                additionalLinesCount = 0
+                additionalColumnsCount = 0
+                isUseSoftWraps = false
+            }
+            for (line in (info.hlFrom - info.from)..(info.hlTo - info.from)) highlightSnippetLine(editor, line)
+        }
+
+        val wrapper = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            border = JBUI.Borders.empty(8, 10, 10, 10)
+            add(field, BorderLayout.CENTER)
+        }
+        // Cap the preview height so large ranges don't push the thread off-screen.
+        if (needsScroll) {
+            val lineHeight = field.getFontMetrics(field.font).height
+            val maxPx = lineHeight * MAX_VISIBLE_LINES + JBUI.scale(8)
+            field.preferredSize = java.awt.Dimension(field.preferredSize.width, maxPx)
+        }
+        return wrapper
+    }
+
+    private class SnippetInfo(
+        val fileType: FileType,
+        val text: String,
+        val from: Int,
+        val to: Int,
+        val hlFrom: Int,
+        val hlTo: Int,
+    )
+
+    private fun highlightSnippetLine(editor: EditorEx, line: Int) {
+        if (line < 0 || line >= editor.document.lineCount) return
+        // A clearly visible tint over the note's line(s). The editor's caret-row
+        // colour is nearly invisible in light themes, so use a dedicated accent
+        // tint that stands out from the plain preview background.
+        val bg = IncommColors.previewHighlight(editor.colorsScheme)
+        val attrs = TextAttributes().apply { backgroundColor = bg }
+        editor.markupModel.addLineHighlighter(line, HighlighterLayer.CARET_ROW, attrs)
+    }
+
+    private fun buildToolbar(note: Note) {
+        toolbar.removeAll()
+        if (note.resolved) {
+            toolbar.add(iconButton(AllIcons.Actions.Rollback, "Reopen thread") { toggleResolve(note) })
+        } else {
+            toolbar.add(iconButton(AllIcons.Actions.Commit, "Resolve thread") { toggleResolve(note) })
+        }
+        toolbar.add(iconButton(IncommIcons.REPLY, "Reply") {
+            addingReply = true
+            editingKey = null
+            rebuild()
+        })
+        toolbar.add(iconButton(IncommIcons.DELETE_COMMENT, "Delete thread") {
+            NotesService.getInstance(project).removeNote(noteId)
+            onNoteDeleted()
+        })
+        toolbar.revalidate()
+        toolbar.repaint()
+    }
+
+    private fun toggleResolve(note: Note) {
+        NotesService.getInstance(project).setResolved(noteId, !note.resolved)
+        onChanged()
+        rebuild()
+    }
+
+    /** A display or (if being edited) in-place editor bubble for one message. */
+    private fun bubbleFor(
+        note: Note,
+        key: String,
+        author: String,
+        authorTitle: String?,
+        createdAt: String,
+        text: String,
+        replyId: String?,
+        indent: Int,
+    ): JComponent {
+        val editing = editingKey == key
+        val card = roundedCard(author)
+
+        val headerRow = JPanel(BorderLayout()).apply { isOpaque = false }
+        headerRow.add(authorLabel(author, authorTitle, createdAt), BorderLayout.CENTER)
+
+        val icons = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
+        if (editing) {
+            val editor = editorArea(text)
+            icons.add(iconButton(IncommIcons.CHECK, "Save") { saveEdit(key, replyId, editor.text) })
+            icons.add(iconButton(IncommIcons.CANCEL, "Cancel") { editingKey = null; rebuild() })
+            registerEditShortcuts(editor, { saveEdit(key, replyId, editor.text) }, { editingKey = null; rebuild() })
+            headerRow.add(icons, BorderLayout.EAST)
+            card.add(headerRow)
+            card.add(editor)
+            focusAfterBuild = editor
+        } else {
+            if (author == AUTHOR_USER) {
+                icons.add(iconButton(IncommIcons.EDIT_COMMENT, "Edit") { editingKey = key; addingReply = false; rebuild() })
+            }
+            icons.add(iconButton(IncommIcons.DELETE_COMMENT, "Delete") { deleteMessage(key, replyId) })
+            headerRow.add(icons, BorderLayout.EAST)
+            card.add(headerRow)
+            card.add(displayArea(text))
+        }
+
+        return indented(card, indent)
+    }
+
+    private fun newReplyBubble(note: Note): JComponent {
+        val card = roundedCard(AUTHOR_USER)
+        val headerRow = JPanel(BorderLayout()).apply { isOpaque = false }
+        headerRow.add(authorLabel(AUTHOR_USER, null, "new reply"), BorderLayout.CENTER)
+        val editor = editorArea("")
+        val icons = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
+        icons.add(iconButton(IncommIcons.CHECK, "Send") {
+            val t = editor.text.trim()
+            if (t.isNotEmpty()) {
+                NotesService.getInstance(project).addReply(noteId, t, AUTHOR_USER)
+                onChanged()
+            }
+            addingReply = false
+            rebuild()
+        })
+        icons.add(iconButton(IncommIcons.CANCEL, "Cancel") { addingReply = false; rebuild() })
+        
+        registerEditShortcuts(
+            editor,
+            {
+                val t = editor.text.trim()
+                if (t.isNotEmpty()) {
+                    NotesService.getInstance(project).addReply(noteId, t, AUTHOR_USER)
+                    onChanged()
+                }
+                addingReply = false
+                rebuild()
+            },
+            { addingReply = false; rebuild() }
+        )
+        
+        headerRow.add(icons, BorderLayout.EAST)
+        card.add(headerRow)
+        card.add(editor)
+        focusAfterBuild = editor
+        return indented(card, JBUI.scale(18))
+    }
+
+    private fun saveEdit(key: String, replyId: String?, text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isNotEmpty()) {
+            val service = NotesService.getInstance(project)
+            if (key == KEY_ORIGINAL) service.updateContent(noteId, trimmed)
+            else if (replyId != null) service.updateReply(noteId, replyId, trimmed)
+            onChanged()
+        }
+        editingKey = null
+        rebuild()
+    }
+
+    private fun deleteMessage(key: String, replyId: String?) {
+        val service = NotesService.getInstance(project)
+        if (key == KEY_ORIGINAL) {
+            service.removeNote(noteId)
+            onNoteDeleted()
+        } else if (replyId != null) {
+            service.removeReply(noteId, replyId)
+            onChanged()
+            rebuild()
+        }
+    }
+
+    private fun registerEditShortcuts(field: JComponent, save: () -> Unit, cancel: () -> Unit) {
+        object : com.intellij.openapi.project.DumbAwareAction() {
+            override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) = save()
+        }.registerCustomShortcutSet(com.intellij.openapi.actionSystem.CustomShortcutSet.fromString("control ENTER", "meta ENTER"), field)
+        
+        object : com.intellij.openapi.project.DumbAwareAction() {
+            override fun actionPerformed(e: com.intellij.openapi.actionSystem.AnActionEvent) = cancel()
+        }.registerCustomShortcutSet(com.intellij.openapi.actionSystem.CommonShortcuts.ESCAPE, field)
+    }
+
+    // ---- small builders -----------------------------------------------------
+
+    private fun authorLabel(author: String, authorTitle: String?, createdAt: String): JBLabel =
+        ThreadUi.authorLabel(author, ThreadUi.prettyTime(createdAt), authorTitle)
+
+    private fun displayArea(text: String): JBTextArea =
+        ThreadUi.flatEditor(text.trim(), rows = 0, editable = false)
+
+    private fun editorArea(text: String): JBTextArea =
+        ThreadUi.flatEditor(text, rows = 2)
+
+    private fun iconButton(icon: Icon, tooltip: String, onClick: () -> Unit): InplaceButton =
+        ThreadUi.iconButton(icon, tooltip, onClick)
+
+    private fun roundedCard(author: String): JPanel = ThreadUi.roundedCard(author)
+
+    private fun indented(card: JComponent, indent: Int): JComponent =
+        JPanel(BorderLayout()).apply {
+            isOpaque = false
+            border = JBUI.Borders.emptyLeft(indent)
+            add(card, BorderLayout.CENTER)
+        }
+
+    companion object {
+        private const val KEY_ORIGINAL = "orig"
+        private const val MAX_VISIBLE_LINES = 10
+        private fun keyReply(id: String) = "reply:$id"
+
+        private fun escape(s: String) = ThreadUi.escape(s)
+    }
+}

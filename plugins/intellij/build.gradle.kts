@@ -35,7 +35,7 @@ dependencies {
 
 intellijPlatform {
     pluginConfiguration {
-        id = "dev.incomm"
+        id = "one.bitby.incomm"
         name = providers.gradleProperty("pluginName")
         version = providers.gradleProperty("pluginVersion")
 

@@ -1,16 +1,19 @@
 <idea-plugin>
-    <id>dev.incomm</id>
-    <name>incomm</name>
+    <id>one.bitby.incomm</id>
+    <name>Incomm</name>
     <vendor>bitbyone</vendor>
 
     <description><![CDATA[
-        <b>incomm</b> — inline code-review comments for AI agents.
-        <br/>
-        Attach comments to specific lines in any file. Comments are stored in
-        <code>&lt;project-root&gt;/.incomm/notes_&lt;branch&gt;.json</code>
-        (scoped to the current git branch) and are meant to be consumed and
-        answered by an AI agent through the companion <code>incomm</code> CLI.
-        Agent replies appear inline, right at the line.
+        <b>Incomm</b> is an inline communication bridge designed for seamless, line-by-line collaboration between developers and AI coding agents.
+        <br/><br/>
+        Instead of copying and pasting code snippets into separate chat windows, you can leave questions, review remarks, and refactor tasks directly on any line in your editor. Your autonomous agents read, investigate, and reply to these threaded discussions inline as they work, keeping all feedback and reasoning right where the code lives.
+        <br/><br/>
+        <b>Why Incomm?</b>
+        <ul>
+            <li><b>Inline Threaded Reviews:</b> Create, reply to, resolve, and browse line-anchored review discussions directly inside any JetBrains IDE.</li>
+            <li><b>Self-Healing Anchors:</b> Threads automatically track line shifts and edits, staying attached to the correct code even as files are modified by background agents.</li>
+            <li><b>Branch-Scoped & AI-Friendly:</b> Discussions live in local git-branch-scoped JSON files, allowing CLI tools, scripts, and autonomous LLM agents to easily inspect and answer them.</li>
+        </ul>
     ]]></description>
 
     <!-- Platform-generic: works in all JetBrains IDEs. -->
@@ -23,97 +26,97 @@
     <extensions defaultExtensionNs="com.intellij">
         <!-- NotesService, IncommEditorTracker and IncommSettings are light
              @Service classes and need no registration here. -->
-        <postStartupActivity implementation="dev.incomm.startup.IncommStartupActivity"/>
+        <postStartupActivity implementation="one.bitby.incomm.startup.IncommStartupActivity"/>
         <applicationConfigurable parentId="tools"
-                                 id="dev.incomm.settings"
+                                 id="one.bitby.incomm.settings"
                                  displayName="Incomm"
-                                 instance="dev.incomm.settings.IncommConfigurable"/>
+                                 instance="one.bitby.incomm.settings.IncommConfigurable"/>
         <notificationGroup id="Incomm" displayType="BALLOON"/>
     </extensions>
 
     <projectListeners>
         <!-- Ensures the editor tracker starts as soon as a file is opened. -->
-        <listener class="dev.incomm.editor.IncommFileEditorListener"
+        <listener class="one.bitby.incomm.editor.IncommFileEditorListener"
                   topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
     </projectListeners>
 
     <actions>
         <action id="incomm.StartThread"
-                class="dev.incomm.actions.AddCommentAction"
+                class="one.bitby.incomm.actions.AddCommentAction"
                 icon="/icons/addComment.svg">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <add-to-group group-id="EditorGutterPopupMenu" anchor="last"/>
         </action>
 
         <action id="incomm.Reply"
-                class="dev.incomm.actions.ReplyAction"
+                class="one.bitby.incomm.actions.ReplyAction"
                 icon="/icons/reply.svg">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="incomm.StartThread"/>
             <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="incomm.StartThread"/>
         </action>
 
         <action id="incomm.EditComment"
-                class="dev.incomm.actions.EditCommentAction"
+                class="one.bitby.incomm.actions.EditCommentAction"
                 icon="/icons/editComment.svg">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="incomm.Reply"/>
             <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="incomm.Reply"/>
         </action>
 
         <action id="incomm.ResolveThread"
-                class="dev.incomm.actions.ResolveThreadAction"
+                class="one.bitby.incomm.actions.ResolveThreadAction"
                 icon="/icons/commentResolved.svg">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="incomm.EditComment"/>
             <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="incomm.EditComment"/>
         </action>
 
         <action id="incomm.ToggleThread"
-                class="dev.incomm.actions.ToggleThreadAction"
+                class="one.bitby.incomm.actions.ToggleThreadAction"
                 icon="/icons/comment.svg">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="incomm.ResolveThread"/>
             <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="incomm.ResolveThread"/>
         </action>
 
         <action id="incomm.DeleteThread"
-                class="dev.incomm.actions.DeleteThreadAction"
+                class="one.bitby.incomm.actions.DeleteThreadAction"
                 icon="/icons/deleteComment.svg">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="incomm.ToggleThread"/>
             <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="incomm.ToggleThread"/>
         </action>
 
         <action id="incomm.OpenExplorer"
-                class="dev.incomm.actions.ShowCommentsAction"
+                class="one.bitby.incomm.actions.ShowCommentsAction"
                 icon="/icons/comment.svg">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
         <action id="incomm.OpenFileExplorer"
-                class="dev.incomm.actions.ShowFileCommentsAction"
+                class="one.bitby.incomm.actions.ShowFileCommentsAction"
                 icon="/icons/comment.svg">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
         <action id="incomm.ToggleAllThreads"
-                class="dev.incomm.actions.ToggleNotesAction">
+                class="one.bitby.incomm.actions.ToggleNotesAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
         <action id="incomm.ToggleResolved"
-                class="dev.incomm.actions.ToggleResolvedNotesAction">
+                class="one.bitby.incomm.actions.ToggleResolvedNotesAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
         <action id="incomm.ClearFile"
-                class="dev.incomm.actions.ClearFileAction">
+                class="one.bitby.incomm.actions.ClearFileAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
         <action id="incomm.ClearAllThreads"
-                class="dev.incomm.actions.ClearAction">
+                class="one.bitby.incomm.actions.ClearAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
         <action id="incomm.Reload"
-                class="dev.incomm.actions.ReloadAction">
+                class="one.bitby.incomm.actions.ReloadAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
     </actions>

@@ -145,7 +145,7 @@ any compatible editor/UI integration.
 
 ---
 
-## 6. Plugin architecture (`plugins/intellij/src/main/kotlin/dev/incomm/`)
+## 6. Plugin architecture (`plugins/intellij/src/main/kotlin/one/bitby/incomm/`)
 
 Everything hangs off two project-level `@Service` singletons (light services, no XML
 registration): **`NotesService`** (data) and **`IncommEditorTracker`** (editor wiring).
@@ -350,7 +350,7 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
 
 ## 8. Tests
 
-- **Plugin** (`plugins/intellij/src/test/kotlin/dev/incomm/`): `AnchoringTest` (parity vs fixtures),
+- **Plugin** (`plugins/intellij/src/test/kotlin/one/bitby/incomm/`): `AnchoringTest` (parity vs fixtures),
   `NotesStoreTest`, `NotesServiceTest` (incl. merge-on-write: external agent note survives a
   plugin write, local delete isn't resurrected), `EditorIntegrationTest` (gutter icons, inline
   cards, compose/reply/add/edit inlays, per-thread & resolved hide/show, caret gutter band). Run:

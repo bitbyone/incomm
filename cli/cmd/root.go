@@ -8,7 +8,7 @@ import (
 )
 
 // version is overridable at build time with -ldflags "-X incomm/cmd.version=...".
-var version = "0.1.0"
+var version = "1.0.0"
 
 // Global flags shared by all subcommands.
 var (

@@ -1,0 +1,102 @@
+package one.bitby.incomm.ui
+
+import com.intellij.ui.SimpleColoredComponent
+import com.intellij.ui.SimpleTextAttributes
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import one.bitby.incomm.model.Note
+import java.awt.BorderLayout
+import java.awt.Component
+import javax.swing.BoxLayout
+import javax.swing.JList
+import javax.swing.JPanel
+import javax.swing.ListCellRenderer
+
+/**
+ * Two-line list row: the comment text on top, and the reply count + file:line
+ * location underneath.
+ */
+class NoteListCellRenderer : ListCellRenderer<Note> {
+
+    private val top = SimpleColoredComponent().apply { isOpaque = false }
+    private val bottom = SimpleColoredComponent().apply { isOpaque = false }
+    private val panel = JPanel(BorderLayout())
+
+    init {
+        val box = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            isOpaque = false
+            border = JBUI.Borders.empty(4, 6)
+            add(top)
+            add(bottom)
+        }
+        panel.add(box, BorderLayout.CENTER)
+    }
+
+    override fun getListCellRendererComponent(
+        list: JList<out Note>,
+        note: Note,
+        index: Int,
+        selected: Boolean,
+        focused: Boolean,
+    ): Component {
+        top.clear()
+        bottom.clear()
+
+        panel.isOpaque = true
+        // Resolved rows read as success (green), orphaned rows as error (red).
+        // A thread that is both resolved and orphaned uses the resolved (green)
+        // background — being resolved is what matters — but still lists both
+        // states in its label. The selected variant uses the stronger border tone.
+        val stateBg: java.awt.Color? = when {
+            note.resolved -> if (selected) IncommColors.resolvedRowBgSelected else IncommColors.resolvedRowBg
+            note.orphaned -> if (selected) IncommColors.orphanedRowBgSelected else IncommColors.orphanedRowBg
+            else -> null
+        }
+        panel.background = stateBg
+            ?: if (selected) UIUtil.getListSelectionBackground(focused) else UIUtil.getListBackground()
+
+        // On a tinted state background keep the standard readable foreground
+        // instead of the (often white) selection foreground.
+        val useSelectionFg = selected && stateBg == null
+        val mainAttr = if (useSelectionFg) {
+            SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, UIUtil.getListSelectionForeground(focused))
+        } else {
+            SimpleTextAttributes.REGULAR_ATTRIBUTES
+        }
+        val subAttr = if (useSelectionFg) {
+            SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, UIUtil.getListSelectionForeground(focused))
+        } else {
+            SimpleTextAttributes.GRAYED_ATTRIBUTES
+        }
+
+        top.icon = NoteGutterIconRenderer.iconFor(note)
+        top.append(oneLine(note.content), mainAttr)
+        // Show every applicable state side by side, e.g. "resolved | orphaned".
+        val states = buildList {
+            if (note.resolved) add("\u2713 resolved")
+            if (note.orphaned) add("orphaned")
+        }
+        if (states.isNotEmpty()) top.append("  " + states.joinToString(" | "), subAttr)
+
+        val replies = when (val n = note.replies.size) {
+            0 -> ""
+            1 -> "1 reply   "
+            else -> "$n replies   "
+        }
+        bottom.append("$replies${shortLocation(note)}", subAttr)
+
+        return panel
+    }
+
+    private fun oneLine(text: String): String {
+        val flat = text.replace("\n", " ").trim()
+        return if (flat.length > 80) flat.take(77) + "\u2026" else flat
+    }
+
+    /** File name (no directory) + line range, e.g. "main.go:42" or "main.go:42-48". */
+    private fun shortLocation(note: Note): String {
+        val name = note.file.substringAfterLast('/')
+        return if (note.endLine != note.startLine) "$name:${note.startLine}-${note.endLine}" else "$name:${note.startLine}"
+    }
+}

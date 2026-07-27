@@ -28,6 +28,7 @@ import dev.incomm.store.IncommPaths
 import dev.incomm.store.IncommSourceFileWatcher
 import dev.incomm.store.NotesFileWatcher
 import dev.incomm.store.NotesService
+import dev.incomm.ui.IncommColors
 import dev.incomm.ui.NoteGutterIconRenderer
 import java.util.concurrent.ConcurrentHashMap
 
@@ -401,6 +402,8 @@ class IncommEditorTracker(private val project: Project) : Disposable {
                 NoteGutterIconRenderer.iconFor(note),
                 NoteGutterIconRenderer.tooltipFor(note),
             )
+            hl.setErrorStripeMarkColor(IncommColors.scrollbarMark(note))
+            hl.errorStripeTooltip = NoteGutterIconRenderer.tooltipFor(note)
             entry.highlighters.add(hl)
             entry.noteIdByHighlighter[hl] = note.id
         }

@@ -1,11 +1,13 @@
 package dev.incomm.ui
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.ui.EditorTextField
@@ -147,48 +149,51 @@ class NoteThreadComponent(
      * lines. Returns null if the file/document can't be resolved.
      */
     private fun codePreview(note: Note): JComponent? {
-        val vf = IncommPaths.findVirtualFile(project, note.file) ?: return null
-        val doc = FileDocumentManager.getInstance().getDocument(vf) ?: return null
-        val lineCount = doc.lineCount
-        if (lineCount == 0) return null
+        val info = runReadAction {
+            val vf = IncommPaths.findVirtualFile(project, note.file) ?: return@runReadAction null
+            val doc = FileDocumentManager.getInstance().getDocument(vf) ?: return@runReadAction null
+            val lineCount = doc.lineCount
+            if (lineCount == 0) return@runReadAction null
 
-        val start0 = (note.startLine - 1).coerceIn(0, lineCount - 1)
-        val end0 = (note.endLine - 1).coerceIn(start0, lineCount - 1)
-        val rangeSize = end0 - start0 + 1
+            val start0 = (note.startLine - 1).coerceIn(0, lineCount - 1)
+            val end0 = (note.endLine - 1).coerceIn(start0, lineCount - 1)
+            val rangeSize = end0 - start0 + 1
 
-        val from: Int
-        val to: Int
-        val hlFrom: Int
-        val hlTo: Int
-        when {
-            rangeSize == 1 -> {
-                // Single line: 2 above, 2 below (5 rows total).
-                from = (start0 - 2).coerceAtLeast(0)
-                to = (start0 + 2).coerceAtMost(lineCount - 1)
-                hlFrom = start0
-                hlTo = start0
+            val from: Int
+            val to: Int
+            val hlFrom: Int
+            val hlTo: Int
+            when {
+                rangeSize == 1 -> {
+                    // Single line: 2 above, 2 below (5 rows total).
+                    from = (start0 - 2).coerceAtLeast(0)
+                    to = (start0 + 2).coerceAtMost(lineCount - 1)
+                    hlFrom = start0
+                    hlTo = start0
+                }
+                rangeSize <= 8 -> {
+                    // Small range: show the whole range + 1 row above and below.
+                    from = (start0 - 1).coerceAtLeast(0)
+                    to = (end0 + 1).coerceAtMost(lineCount - 1)
+                    hlFrom = start0
+                    hlTo = end0
+                }
+                else -> {
+                    // Large range: show everything, no extra context.
+                    from = start0
+                    to = end0
+                    hlFrom = start0
+                    hlTo = end0
+                }
             }
-            rangeSize <= 8 -> {
-                // Small range: show the whole range + 1 row above and below.
-                from = (start0 - 1).coerceAtLeast(0)
-                to = (end0 + 1).coerceAtMost(lineCount - 1)
-                hlFrom = start0
-                hlTo = end0
-            }
-            else -> {
-                // Large range: show everything, no extra context.
-                from = start0
-                to = end0
-                hlFrom = start0
-                hlTo = end0
-            }
-        }
+            val text = doc.getText(TextRange(doc.getLineStartOffset(from), doc.getLineEndOffset(to)))
+            SnippetInfo(vf.fileType, text, from, to, hlFrom, hlTo)
+        } ?: return null
 
-        val text = doc.getText(TextRange(doc.getLineStartOffset(from), doc.getLineEndOffset(to)))
-        val visibleLines = to - from + 1
+        val visibleLines = info.to - info.from + 1
         val needsScroll = visibleLines > MAX_VISIBLE_LINES
-        val snippet = EditorFactory.getInstance().createDocument(text)
-        val field = EditorTextField(snippet, project, vf.fileType, /* viewer = */ true, /* oneLineMode = */ false)
+        val snippet = EditorFactory.getInstance().createDocument(info.text)
+        val field = EditorTextField(snippet, project, info.fileType, /* viewer = */ true, /* oneLineMode = */ false)
         field.setFontInheritedFromLAF(false)
         field.addSettingsProvider { editor ->
             editor.setVerticalScrollbarVisible(needsScroll)
@@ -204,7 +209,7 @@ class NoteThreadComponent(
                 additionalColumnsCount = 0
                 isUseSoftWraps = false
             }
-            for (line in (hlFrom - from)..(hlTo - from)) highlightSnippetLine(editor, line)
+            for (line in (info.hlFrom - info.from)..(info.hlTo - info.from)) highlightSnippetLine(editor, line)
         }
 
         val wrapper = JPanel(BorderLayout()).apply {
@@ -220,6 +225,15 @@ class NoteThreadComponent(
         }
         return wrapper
     }
+
+    private class SnippetInfo(
+        val fileType: FileType,
+        val text: String,
+        val from: Int,
+        val to: Int,
+        val hlFrom: Int,
+        val hlTo: Int,
+    )
 
     private fun highlightSnippetLine(editor: EditorEx, line: Int) {
         if (line < 0 || line >= editor.document.lineCount) return

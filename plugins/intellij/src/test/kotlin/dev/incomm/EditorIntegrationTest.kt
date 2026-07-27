@@ -14,7 +14,9 @@ import dev.incomm.model.AUTHOR_USER
 import dev.incomm.store.IncommPaths
 import dev.incomm.store.NotesService
 import dev.incomm.ui.AddPlusGutterIconRenderer
+import dev.incomm.ui.IncommColors
 import dev.incomm.ui.NoteGutterIconRenderer
+import dev.incomm.ui.NoteThreadComponent
 import java.nio.file.Files
 import java.nio.file.Paths
 
@@ -352,6 +354,51 @@ class EditorIntegrationTest : BasePlatformTestCase() {
         UIUtil.dispatchAllInvocationEvents()
         assertFalse("note is reopened", service.find(noteId)!!.resolved)
         assertEquals("reopening shows the card", 1, blocks())
+
+        service.clearAll()
+        service.flushWrites()
+    }
+
+    fun testNoteThreadComponentWithRealFile() {
+        val vf = openOnDisk("preview_test.kt", "fun main() {\n    println(\"hello\")\n}\n")
+        val rel = IncommPaths.relPath(project, vf)!!
+        val service = NotesService.getInstance(project)
+        val note = service.addNote(rel, 2, 2, "check print statement", AUTHOR_USER, listOf("    println(\"hello\")"))
+
+        var deleted = false
+        val component = NoteThreadComponent(
+            project, note.id, onChanged = {}, onNoteDeleted = { deleted = true }
+        )
+        assertFalse("note exists, component should render", deleted)
+        assertTrue("component should have rendered children including code preview", component.componentCount > 0)
+
+        service.clearAll()
+        service.flushWrites()
+    }
+
+    fun testNoteScrollbarMarkIsAttached() {
+        val vf = openOnDisk("scrollbar.txt", "line1\nline2\nline3\nline4\n")
+        val editor = myFixture.editor
+        val rel = IncommPaths.relPath(project, vf)!!
+        val service = NotesService.getInstance(project)
+        val note = service.addNote(rel, 2, 2, "check scrollbar mark", AUTHOR_USER, listOf("line2"))
+
+        IncommEditorTracker.getInstance(project).start()
+        UIUtil.dispatchAllInvocationEvents()
+
+        val markup = DocumentMarkupModel.forDocument(editor.document, project, true)
+        var noteHighlighters = markup.allHighlighters.filter { it.gutterIconRenderer is NoteGutterIconRenderer }
+        assertEquals("expected exactly one note highlighter", 1, noteHighlighters.size)
+
+        var hl = noteHighlighters.first()
+        assertEquals("open thread error stripe mark should use stateOpen light blue color", IncommColors.stateOpen, hl.getErrorStripeMarkColor(editor.colorsScheme))
+        assertNotNull("error stripe tooltip should be set", hl.errorStripeTooltip)
+
+        service.setResolved(note.id, true)
+        UIUtil.dispatchAllInvocationEvents()
+        noteHighlighters = markup.allHighlighters.filter { it.gutterIconRenderer is NoteGutterIconRenderer }
+        hl = noteHighlighters.first()
+        assertEquals("resolved thread error stripe mark should use green stateResolved color", IncommColors.stateResolved, hl.getErrorStripeMarkColor(editor.colorsScheme))
 
         service.clearAll()
         service.flushWrites()

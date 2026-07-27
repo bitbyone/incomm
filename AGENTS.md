@@ -273,6 +273,7 @@ Tools-menu / global:
 | Action id | Text | Effect |
 |-----------|------|--------|
 | `incomm.OpenExplorer` | Incomm: Thread Explorer | open the explorer |
+| `incomm.OpenFileExplorer` | Incomm: Thread Explorer in File | open the explorer for the current file only |
 | `incomm.ToggleAllThreads` | Incomm: Show/Hide All Threads | show/hide **all** inline cards (gutter icons stay) |
 | `incomm.ToggleResolved` | Incomm: Show/Hide Resolved Threads | show/hide **resolved** cards only |
 | `incomm.ClearFile` | Incomm: Clear Threads in File | delete threads for the current file (confirm) |

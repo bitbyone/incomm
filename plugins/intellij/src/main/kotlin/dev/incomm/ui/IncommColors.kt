@@ -7,6 +7,7 @@ import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import dev.incomm.model.AUTHOR_AGENT
+import dev.incomm.model.Note
 import dev.incomm.settings.IncommSettings
 import java.awt.Color
 
@@ -83,6 +84,9 @@ object IncommColors {
     val stateOrphaned: Color get() = JBColor.ORANGE
     val stateResolved: Color get() = JBColor.GREEN
     val stateOpen: Color get() = JBUI.CurrentTheme.Banner.INFO_BORDER_COLOR
+
+    /** Right scrollbar (error stripe) mark colour for threads: green when resolved, otherwise light blue. */
+    fun scrollbarMark(note: Note): Color = if (note.resolved) stateResolved else stateOpen
 
     // ---- explorer list row backgrounds -------------------------------------
 

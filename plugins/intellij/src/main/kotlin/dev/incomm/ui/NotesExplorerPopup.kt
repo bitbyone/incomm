@@ -39,10 +39,12 @@ import javax.swing.event.DocumentListener
  */
 object NotesExplorerPopup {
 
-    fun show(project: Project) {
+    fun show(project: Project, fileFilter: String? = null) {
         val service = NotesService.getInstance(project)
-        if (service.isEmpty()) {
-            JBPopupFactory.getInstance().createMessage("No incomm threads yet.")
+        val isEmpty = if (fileFilter != null) !service.hasNotesForFile(fileFilter) else service.isEmpty()
+        if (isEmpty) {
+            val msg = if (fileFilter != null) "No incomm threads in $fileFilter." else "No incomm threads yet."
+            JBPopupFactory.getInstance().createMessage(msg)
                 .showCenteredInCurrentWindow(project)
             return
         }
@@ -73,6 +75,9 @@ object NotesExplorerPopup {
         lateinit var popup: JBPopup
         var shownId: String? = null
 
+        fun hasRemainingNotes(): Boolean =
+            if (fileFilter != null) service.hasNotesForFile(fileFilter) else !service.isEmpty()
+
         fun selected(): Note? = list.selectedValue
 
         fun placeholder(): JComponent =
@@ -86,7 +91,8 @@ object NotesExplorerPopup {
             val showOpen = openFilter.isSelected
             val showResolved = resolvedFilter.isSelected
             val showOrphaned = orphanedFilter.isSelected
-            val items = service.allNotes()
+            val source = if (fileFilter != null) service.notesForFile(fileFilter) else service.allNotes()
+            val items = source
                 // Resolution axis: pick which of open / resolved to show.
                 .filter { (showOpen && !it.resolved) || (showResolved && it.resolved) }
                 // Orphaned axis: hide orphaned threads unless included.
@@ -117,7 +123,7 @@ object NotesExplorerPopup {
                     onChanged = { reload(note.id) },
                     onNoteDeleted = {
                         shownId = null
-                        if (service.isEmpty()) popup.cancel() else reload(null)
+                        if (!hasRemainingNotes()) popup.cancel() else reload(null)
                     },
                 )
                 rightHost.add(component, BorderLayout.CENTER)
@@ -169,11 +175,21 @@ object NotesExplorerPopup {
             header.addMouseListener(this)
             header.addMouseMotionListener(this)
         }
+        val footer = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            if (fileFilter != null) {
+                val fileLabel = JBLabel("<html>&nbsp;File: <b>$fileFilter</b></html>").apply {
+                    border = JBUI.Borders.empty(4, 6, 0, 6)
+                }
+                add(fileLabel, BorderLayout.NORTH)
+            }
+            add(hintBar(), BorderLayout.SOUTH)
+        }
         val root = JPanel(BorderLayout()).apply {
             add(header, BorderLayout.NORTH)
             add(splitter, BorderLayout.CENTER)
-            // Hints span the full window width (one line as far as it fits).
-            add(hintBar(), BorderLayout.SOUTH)
+            // Footer (optional file filter + shortcut hints) spans the full window width.
+            add(footer, BorderLayout.SOUTH)
         }
 
         popup = JBPopupFactory.getInstance()
@@ -195,7 +211,7 @@ object NotesExplorerPopup {
         fun deleteSelected() {
             val note = selected() ?: return
             service.removeNote(note.id)
-            if (service.isEmpty()) popup.cancel() else reload(null)
+            if (!hasRemainingNotes()) popup.cancel() else reload(null)
         }
 
         fun resolveSelected() {

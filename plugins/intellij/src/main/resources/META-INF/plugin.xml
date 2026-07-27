@@ -86,6 +86,12 @@
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
 
+        <action id="incomm.OpenFileExplorer"
+                class="dev.incomm.actions.ShowFileCommentsAction"
+                icon="/icons/comment.svg">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+
         <action id="incomm.ToggleAllThreads"
                 class="dev.incomm.actions.ToggleNotesAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>

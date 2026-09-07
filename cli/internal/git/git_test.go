@@ -34,7 +34,7 @@ func TestDetectBranchSlash(t *testing.T) {
 	}
 }
 
-func TestDetectBranchDetachedHead(t *testing.T) {
+func Test DetectBranchDetachedHead(t *testing.T) {
 	root := t.TempDir()
 	gitDir := filepath.Join(root, ".git")
 	if err := os.Mkdir(gitDir, 0o755); err != nil {

@@ -18,7 +18,9 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import one.bitby.incomm.model.AUTHOR_USER
+import one.bitby.incomm.model.AUTHOR_AGENT
 import one.bitby.incomm.model.Note
+import one.bitby.incomm.settings.IncommSettings
 import one.bitby.incomm.store.IncommPaths
 import one.bitby.incomm.store.NotesService
 import java.awt.BorderLayout
@@ -305,7 +307,7 @@ class NoteThreadComponent(
             icons.add(iconButton(IncommIcons.DELETE_COMMENT, "Delete") { deleteMessage(key, replyId) })
             headerRow.add(icons, BorderLayout.EAST)
             card.add(headerRow)
-            card.add(displayArea(text))
+            card.add(displayArea(text, author))
         }
 
         return indented(card, indent)
@@ -388,8 +390,15 @@ class NoteThreadComponent(
     private fun authorLabel(author: String, authorTitle: String?, createdAt: String): JBLabel =
         ThreadUi.authorLabel(author, ThreadUi.prettyTime(createdAt), authorTitle)
 
-    private fun displayArea(text: String): JBTextArea =
-        ThreadUi.flatEditor(text.trim(), rows = 0, editable = false)
+    private fun displayArea(text: String, author: String): JComponent {
+        val settings = IncommSettings.getInstance().data
+        val useMarkdown = if (author == AUTHOR_USER) settings.enableUserMarkdown else settings.enableAgentMarkdown
+        return if (useMarkdown) {
+            ThreadUi.markdownDisplay(text)
+        } else {
+            ThreadUi.flatEditor(text.trim(), rows = 0, editable = false)
+        }
+    }
 
     private fun editorArea(text: String): JBTextArea =
         ThreadUi.flatEditor(text, rows = 2)

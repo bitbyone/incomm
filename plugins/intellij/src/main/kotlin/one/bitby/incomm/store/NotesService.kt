@@ -134,6 +134,17 @@ class NotesService(private val project: Project) : Disposable {
             if (locallyDeleted.isNotEmpty()) loaded.notes.removeAll { it.id in locallyDeleted }
             if (model == loaded) false
             else {
+                // DIFF LOGGING
+                if (model.notes.size != loaded.notes.size) {
+                    thisLogger().info("incomm diff: size ${model.notes.size} != ${loaded.notes.size}")
+                } else {
+                    for (i in model.notes.indices) {
+                        if (model.notes[i] != loaded.notes[i]) {
+                            thisLogger().info("incomm diff at note ${model.notes[i].id}:\nmodel: ${model.notes[i]}\nloaded: ${loaded.notes[i]}")
+                        }
+                    }
+                }
+                
                 // Diff before replacing: detect new agent content for notifications.
                 agentNews = AgentNotifier.diff(model, loaded)
                 model = loaded

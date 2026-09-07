@@ -37,6 +37,9 @@ class IncommSettings : PersistentStateComponent<IncommSettings.State> {
         var dateStyle: DateStyle = DateStyle.RELATIVE
         /** Max inline card width in editor-font characters (0 = unlimited). */
         var maxCardWidthChars: Int = 100
+        var enableUserMarkdown: Boolean = false
+        var enableAgentMarkdown: Boolean = false
+        var detectExternalChanges: Boolean = true
     }
 
     private var myState = State()

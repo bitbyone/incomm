@@ -4,7 +4,7 @@ import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 plugins {
     id("java")
     // Kotlin JVM. Version chosen to be compatible with the 2024.2 platform.
-    id("org.jetbrains.kotlin.jvm") version "2.0.21"
+    id("org.jetbrains.kotlin.jvm") version "2.3.0"
     // IntelliJ Platform Gradle Plugin 2.x
     id("org.jetbrains.intellij.platform") version "2.18.1"
 }
@@ -31,6 +31,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.opentest4j:opentest4j:1.3.0")
+    implementation("org.commonmark:commonmark:0.22.0")
 }
 
 intellijPlatform {

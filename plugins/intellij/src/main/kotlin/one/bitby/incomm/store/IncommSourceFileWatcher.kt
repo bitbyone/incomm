@@ -26,6 +26,8 @@ class IncommSourceFileWatcher(
         val rels = HashSet<String>()
         for (event in events) {
             if (event !is VFileContentChangeEvent) continue
+            // Ignore IDE-initiated events (typing, auto-save). We only care about external changes from disk.
+            if (!event.isFromRefresh) continue
             if (event.path.replace('\\', '/') == notesPath) continue
             val rel = IncommPaths.relPath(project, event.file) ?: continue
             if (!service.hasNotesForFile(rel)) continue

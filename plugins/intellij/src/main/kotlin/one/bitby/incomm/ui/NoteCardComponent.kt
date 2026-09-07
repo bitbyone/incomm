@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.CommonShortcuts
 import com.intellij.openapi.actionSystem.CustomShortcutSet
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.ex.util.EditorScrollingPositionKeeper
 import com.intellij.openapi.fileTypes.FileTypes
 import com.intellij.openapi.project.DumbAwareAction
@@ -14,7 +15,9 @@ import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.ui.EditorTextField
 import com.intellij.util.ui.JBUI
 import one.bitby.incomm.model.AUTHOR_USER
+import one.bitby.incomm.model.AUTHOR_AGENT
 import one.bitby.incomm.model.Note
+import one.bitby.incomm.settings.IncommSettings
 import one.bitby.incomm.store.NotesService
 import java.awt.BorderLayout
 import java.awt.Component
@@ -25,6 +28,8 @@ import java.awt.Graphics2D
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.RenderingHints
+import java.awt.TextComponent
+import java.awt.TextField
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.event.MouseListener
@@ -216,14 +221,17 @@ class NoteCardComponent(
             icons.isVisible = false // revealed on hover
             headerRow.add(icons, BorderLayout.EAST)
             bubble.add(headerRow)
-            bubble.add(ThreadUi.flatEditor(text.trim(), rows = 0, editable = false).apply { isFocusable = false })
+            val settings = IncommSettings.getInstance().data
+            val useMarkdown = if (author == AUTHOR_USER) settings.enableUserMarkdown else settings.enableAgentMarkdown
+            val display = if (useMarkdown) ThreadUi.markdownDisplay(text) else ThreadUi.flatEditor(text.trim(), rows = 0, editable = false).apply { isFocusable = false }
+            bubble.add(display)
             installBubbleHover(bubble, icons)
         }
         addRecursively(bubble, cardHoverAdapter)
         return bubble
     }
 
-    private fun registerEditShortcuts(field: EditorTextField, save: () -> Unit, cancel: () -> Unit) {
+    private fun registerEditShortcuts(field: JComponent, save: () -> Unit, cancel: () -> Unit) {
         object : DumbAwareAction() {
             override fun actionPerformed(e: AnActionEvent) = save()
         }.registerCustomShortcutSet(CustomShortcutSet.fromString("control ENTER", "meta ENTER"), field)
@@ -236,13 +244,13 @@ class NoteCardComponent(
         // A plain EditorTextField reports a one-line preferred height even in
         // multi-line mode, so it never grows. Size it to its actual line count.
         val field = object : EditorTextField(text, project, FileTypes.PLAIN_TEXT) {
-            override fun getPreferredSize(): java.awt.Dimension {
-                val base = super.getPreferredSize()
-                val ed = getEditor() ?: return base
-                val lines = ed.document.lineCount.coerceAtLeast(1)
-                val h = ed.lineHeight * lines + insets.top + insets.bottom + JBUI.scale(6)
-                return java.awt.Dimension(base.width, maxOf(base.height, h))
-            }
+//            override fun getPreferredSize(): java.awt.Dimension {
+//                val base = super.getPreferredSize()
+//                val ed = getEditor() ?: return base
+//                val lines = ed.document.lineCount.coerceAtLeast(1)
+//                val h = ed.lineHeight * lines + insets.top + insets.bottom + JBUI.scale(6)
+//                return java.awt.Dimension(base.width, maxOf(base.height, h))
+//            }
         }
         field.setOneLineMode(false)
         field.background = ThreadUi.USER_BG
@@ -257,6 +265,7 @@ class NoteCardComponent(
                 additionalLinesCount = 0
                 isUseSoftWraps = true
                 isCaretRowShown = false
+                isVirtualSpace = true
             }
             e.setBorder(JBUI.Borders.empty())
             e.backgroundColor = ThreadUi.USER_BG
@@ -331,6 +340,27 @@ class NoteCardComponent(
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = JBUI.Borders.empty(5, 12, 6, 8)
             alignmentX = LEFT_ALIGNMENT
+        }
+
+        override fun getPreferredSize(): java.awt.Dimension {
+            val parentWidth = parent?.width ?: 0
+            if (parentWidth > 0 && width <= 0) {
+                // We are inside GridBagLayout, which measures before setting bounds.
+                // We can compute our future width based on our GridBagConstraints!
+                val layout = parent.layout as? GridBagLayout
+                val gbc = layout?.getConstraints(this)
+                val indent = (gbc?.insets?.left ?: 0) + (gbc?.insets?.right ?: 0)
+                val targetWidth = parentWidth - indent
+                
+                // Temporarily set our bounds to targetWidth so children can read it!
+                val oldSize = size
+                setSize(targetWidth, 10000)
+                doLayout() // Lay out children (this assigns width to markdownDisplay / flatEditor)
+                val pref = super.getPreferredSize()
+                size = oldSize
+                return java.awt.Dimension(targetWidth, pref.height)
+            }
+            return super.getPreferredSize()
         }
 
         override fun paintComponent(g: Graphics) {

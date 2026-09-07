@@ -28,6 +28,7 @@ import one.bitby.incomm.store.IncommPaths
 import one.bitby.incomm.store.IncommSourceFileWatcher
 import one.bitby.incomm.store.NotesFileWatcher
 import one.bitby.incomm.store.NotesService
+import one.bitby.incomm.settings.IncommSettings
 import one.bitby.incomm.ui.IncommColors
 import one.bitby.incomm.ui.NoteGutterIconRenderer
 import java.util.concurrent.ConcurrentHashMap
@@ -59,6 +60,7 @@ class IncommEditorTracker(private val project: Project) : Disposable {
     /** Per-editor gutter range-band controllers (hover/caret). */
     private val rangeControllers = HashMap<Editor, NoteRangeHighlighter>()
     private var started = false
+    private var watchersDisposable: Disposable? = null
 
     /**
      * Rel paths of files currently open in an editor. Maintained on the EDT but
@@ -149,6 +151,21 @@ class IncommEditorTracker(private val project: Project) : Disposable {
         rangeControllers[editor]?.setHoverNote(noteId)
     }
 
+    fun updateWatchers() {
+        val detect = IncommSettings.getInstance().data.detectExternalChanges
+        if (detect && watchersDisposable == null) {
+            val d = Disposer.newDisposable("IncommWatchers")
+            watchersDisposable = d
+            Disposer.register(this, d)
+            VirtualFileManager.getInstance().addAsyncFileListener(NotesFileWatcher(project), d)
+            VirtualFileManager.getInstance()
+                .addAsyncFileListener(IncommSourceFileWatcher(project) { rel -> rel in openRels }, d)
+        } else if (!detect && watchersDisposable != null) {
+            watchersDisposable?.let { Disposer.dispose(it) }
+            watchersDisposable = null
+        }
+    }
+
     fun start() {
         if (started) return
         started = true
@@ -189,13 +206,7 @@ class IncommEditorTracker(private val project: Project) : Disposable {
             },
         )
 
-        // React to external edits of notes.json (agent/CLI writes).
-        VirtualFileManager.getInstance().addAsyncFileListener(NotesFileWatcher(project), this)
-
-        // React to external edits of source files (agent/CLI code edits) that are
-        // not open in an editor, reanchoring their notes from disk.
-        VirtualFileManager.getInstance()
-            .addAsyncFileListener(IncommSourceFileWatcher(project) { rel -> rel in openRels }, this)
+        updateWatchers()
 
         // Ensure the native file watcher actually watches `.incomm/` so external
         // CLI writes fire VFS events (the dir is often gitignored / outside a
@@ -258,6 +269,7 @@ class IncommEditorTracker(private val project: Project) : Disposable {
      * leaves the VFS view stale), so external `incomm clear`/`add` show up.
      */
     private fun syncIncommFromDisk() {
+        if (!IncommSettings.getInstance().data.detectExternalChanges) return
         if (project.isDisposed) return
         ApplicationManager.getApplication().executeOnPooledThread {
             if (project.isDisposed) return@executeOnPooledThread
@@ -331,7 +343,10 @@ class IncommEditorTracker(private val project: Project) : Disposable {
 
     /** Rebuild every editor's incomm UI and force cards to re-render (e.g. after settings change). */
     fun updateSettings() {
-        if (started) refreshAll(rebuildCards = true)
+        if (started) {
+            updateWatchers()
+            refreshAll(rebuildCards = true)
+        }
     }
 
     private fun refreshAll(rebuildCards: Boolean) {

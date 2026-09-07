@@ -33,6 +33,9 @@ class IncommConfigurable : Configurable {
     private val maxWidthSpinner = javax.swing.JSpinner(
         javax.swing.SpinnerNumberModel(100, 0, 500, 10)
     )
+    private val enableUserMarkdown = com.intellij.ui.components.JBCheckBox("Enable Markdown rendering for your comments")
+    private val enableAgentMarkdown = com.intellij.ui.components.JBCheckBox("Enable Markdown rendering for agent comments")
+    private val detectExternalChanges = com.intellij.ui.components.JBCheckBox("Detect external changes (e.g. from agents or CLI)")
 
     override fun getDisplayName(): String = "Incomm"
 
@@ -63,6 +66,13 @@ class IncommConfigurable : Configurable {
             .addSeparator()
             .addComponent(JBLabel("<html><b>Layout</b></html>"))
             .addLabeledComponent("Max inline card width (chars, 0 = unlimited):", maxWidthSpinner)
+            .addSeparator()
+            .addComponent(JBLabel("<html><b>Markdown Rendering</b></html>"))
+            .addComponent(enableUserMarkdown)
+            .addComponent(enableAgentMarkdown)
+            .addSeparator()
+            .addComponent(JBLabel("<html><b>Advanced</b></html>"))
+            .addComponent(detectExternalChanges)
             .addComponent(restore)
             .addComponentFillVertically(JPanel(), 0)
             .panel
@@ -79,7 +89,10 @@ class IncommConfigurable : Configurable {
             overrideOf(commentFg, IncommColors.themeCommentFg()) != s.commentFg ||
             overrideOf(statusFg, IncommColors.themeStatusFg()) != s.statusFg ||
             (dateCombo.selectedItem as DateStyle) != s.dateStyle ||
-            (maxWidthSpinner.value as Int) != s.maxCardWidthChars
+            (maxWidthSpinner.value as Int) != s.maxCardWidthChars ||
+            enableUserMarkdown.isSelected != s.enableUserMarkdown ||
+            enableAgentMarkdown.isSelected != s.enableAgentMarkdown ||
+            detectExternalChanges.isSelected != s.detectExternalChanges
     }
 
     override fun apply() {
@@ -92,6 +105,9 @@ class IncommConfigurable : Configurable {
         s.statusFg = overrideOf(statusFg, IncommColors.themeStatusFg())
         s.dateStyle = dateCombo.selectedItem as DateStyle
         s.maxCardWidthChars = maxWidthSpinner.value as Int
+        s.enableUserMarkdown = enableUserMarkdown.isSelected
+        s.enableAgentMarkdown = enableAgentMarkdown.isSelected
+        s.detectExternalChanges = detectExternalChanges.isSelected
         refreshOpenEditors()
     }
 
@@ -105,6 +121,9 @@ class IncommConfigurable : Configurable {
         statusFg.selectedColor = s.statusFg?.let(::Color) ?: IncommColors.themeStatusFg()
         dateCombo.selectedItem = s.dateStyle
         maxWidthSpinner.value = s.maxCardWidthChars
+        enableUserMarkdown.isSelected = s.enableUserMarkdown
+        enableAgentMarkdown.isSelected = s.enableAgentMarkdown
+        detectExternalChanges.isSelected = s.detectExternalChanges
     }
 
     private fun loadDefaults() {
@@ -116,6 +135,9 @@ class IncommConfigurable : Configurable {
         statusFg.selectedColor = IncommColors.themeStatusFg()
         dateCombo.selectedItem = DateStyle.RELATIVE
         maxWidthSpinner.value = 100
+        enableUserMarkdown.isSelected = false
+        enableAgentMarkdown.isSelected = false
+        detectExternalChanges.isSelected = true
     }
 
     /** The RGB override for a picker, or null when it matches the theme default. */

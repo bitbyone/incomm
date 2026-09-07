@@ -19,12 +19,52 @@ import javax.swing.BoxLayout
 import javax.swing.Icon
 import javax.swing.JPanel
 
+import com.intellij.util.ui.HTMLEditorKitBuilder
+import javax.swing.JEditorPane
+
 /**
  * Shared visual language for the incomm comment UIs so the thread bubbles
  * (gutter popup + explorer) and the add/reply composer look identical: rounded,
  * colour-coded cards with flat, borderless text areas and small icon buttons.
  */
 object ThreadUi {
+
+    fun markdownDisplay(text: String): JEditorPane {
+        val html = MarkdownRenderer.render(text.trim())
+        val pane = object : JEditorPane("text/html", "<html><body>$html</body></html>") {
+            override fun getPreferredSize(): java.awt.Dimension {
+                var w = width
+                if (w <= 0 && parent != null && parent.width > 0) {
+                    w = parent.width
+                }
+                if (w > 0) {
+                    val view = (ui as? javax.swing.plaf.basic.BasicTextUI)?.getRootView(this)
+                    if (view != null) {
+                        view.setSize((w - insets.left - insets.right).toFloat(), Float.MAX_VALUE)
+                        return java.awt.Dimension(w, view.getPreferredSpan(javax.swing.text.View.Y_AXIS).toInt() + insets.top + insets.bottom)
+                    }
+                }
+                return super.getPreferredSize()
+            }
+        }
+        pane.isEditable = false
+        pane.isOpaque = false
+        pane.caret.isSelectionVisible = true
+        pane.border = JBUI.Borders.emptyTop(4)
+        pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, true)
+        pane.font = UIUtil.getLabelFont()
+        pane.foreground = IncommColors.commentFg
+        pane.editorKit = HTMLEditorKitBuilder().withWordWrapViewFactory().build().apply {
+            styleSheet.addRule("body { font-family: ${pane.font.family}; font-size: ${pane.font.size}pt; color: ${hex(IncommColors.commentFg)}; margin: 0; padding: 0; }")
+            styleSheet.addRule("p { margin-top: 0; margin-bottom: 6px; }")
+            styleSheet.addRule("pre, code { font-family: monospace; }")
+        }
+        
+        UIUtil.doNotScrollToCaret(pane)
+        pane.text = "<html><body>$html</body></html>"
+        pane.caretPosition = 0
+        return pane
+    }
 
     /** Kept for the composer input backgrounds; sourced from the active theme. */
     val USER_BG: Color get() = IncommColors.bubbleBg(AUTHOR_USER)

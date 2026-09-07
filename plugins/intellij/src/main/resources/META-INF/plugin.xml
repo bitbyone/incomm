@@ -119,5 +119,11 @@
                 class="one.bitby.incomm.actions.ReloadAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
+
+        <action id="incomm.ToggleDetectExternalChanges"
+                text="Incomm: Detect External Changes"
+                class="one.bitby.incomm.actions.ToggleDetectExternalChangesAction">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
     </actions>
 </idea-plugin>

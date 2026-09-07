@@ -53,14 +53,20 @@ class NoteInlayController(
     parent: Disposable,
 ) : Disposable {
 
-    private class CardEntry(val inlay: Inlay<*>, val card: NoteCardComponent, var note: Note)
+    private class CardEntry(
+        val inlay: Inlay<*>,
+        val host: JPanel,
+        val card: NoteCardComponent,
+        var note: Note,
+    )
 
     private val cards = LinkedHashMap<String, CardEntry>()
     private var composeInlay: Inlay<*>? = null
+    private var scrollMutationDepth = 0
 
     private val resizeListener = object : ComponentAdapter() {
         override fun componentResized(e: ComponentEvent) {
-            for (entry in cards.values) if (entry.inlay.isValid) entry.inlay.update()
+            for (entry in cards.values) resizeInlay(entry.inlay, entry.host)
         }
     }
 
@@ -71,8 +77,8 @@ class NoteInlayController(
     }
 
     /**
-     * One-shot guard: a local save has already rendered the new card via
-     * [addCard] (exactly like the compose block appeared — no jump). The
+     * One-shot guard: a local save has already reconciled the affected card
+     * (exactly like the compose block appeared — no jump). The
      * `notesChanged` it publishes would otherwise make [refreshAll] rebuild every
      * inline card here, churning the layout and jumping the viewport. Skip that
      * one redundant rebuild; the gutter icon is still added by the tracker.
@@ -124,9 +130,18 @@ class NoteInlayController(
             block()
             return
         }
+        if (scrollMutationDepth > 0) {
+            block()
+            return
+        }
         val sm = editor.scrollingModel
         val saved = sm.verticalScrollOffset
-        block()
+        scrollMutationDepth++
+        try {
+            block()
+        } finally {
+            scrollMutationDepth--
+        }
         fun restore() {
             if (editor.isDisposed || sm.verticalScrollOffset == saved) return
             sm.disableAnimation()
@@ -212,7 +227,6 @@ class NoteInlayController(
         val offset = doc.getLineStartOffset(startLine0)
         val card = NoteCardComponent(
             project,
-            editor,
             note.id,
             onReply = { startReply(note.id) },
             onResolve = { resolved -> resolveNote(note.id, resolved) },
@@ -223,7 +237,10 @@ class NoteInlayController(
                 IncommEditorTracker.getInstance(project)
                     .setHoveredNote(editor, if (hovered) note.id else null)
             },
-            onContentResized = { cards[note.id]?.inlay?.let { resizeInlay(it) } },
+            withViewportPreserved = { change -> keepScroll(change) },
+            onContentResized = {
+                cards[note.id]?.let { resizeInlay(it.inlay, it.host) }
+            },
         )
 
         // Compute indent: align with the first non-whitespace char of the line.
@@ -259,7 +276,7 @@ class NoteInlayController(
             offset,
         )
         EditorEmbeddedComponentManager.getInstance().addComponent(ex, host, props)
-            ?.let { cards[note.id] = CardEntry(it, card, note) }
+            ?.let { cards[note.id] = CardEntry(it, host, card, note) }
     }
 
     /**
@@ -356,19 +373,42 @@ class NoteInlayController(
     }
 
     /**
-     * Reconcile one note's card with the current model **in place**, exactly like
-     * add/reply: drop the old inlay and re-add the card if it should still show,
-     * inside a scroll-kept pass, and skip the redundant full rebuild the mutation
-     * published. Handles delete (note gone → card removed), resolve (card hidden →
-     * removed), reopen (shown → re-added) and reply-delete (re-rendered).
+     * Reconcile one note's card with the current model inside a scroll-kept pass
+     * and skip the redundant full rebuild published by the mutation. Existing
+     * cards are updated without replacing their inlay; deleted or hidden cards
+     * are removed, and cards whose anchor moved are recreated at the new offset.
      */
     private fun updateCardInPlace(noteId: String) {
         keepScroll {
             skipNextRebuild = true
-            cards.remove(noteId)?.let { if (it.inlay.isValid) Disposer.dispose(it.inlay) }
-            val note = NotesService.getInstance(project).find(noteId) ?: return@keepScroll
-            if (note.file != rel || note.isHiddenInEditor()) return@keepScroll
-            if (IncommEditorTracker.getInstance(project).isNoteHidden(noteId)) return@keepScroll
+            val note = NotesService.getInstance(project).find(noteId)
+            if (note == null ||
+                note.file != rel ||
+                note.isHiddenInEditor() ||
+                IncommEditorTracker.getInstance(project).isNoteHidden(noteId)
+            ) {
+                cards.remove(noteId)?.let { if (it.inlay.isValid) Disposer.dispose(it.inlay) }
+                return@keepScroll
+            }
+            reconcileCard(note)
+        }
+    }
+
+    /**
+     * Update an existing card without replacing its embedded component. Keeping
+     * the same Swing hierarchy avoids delayed detach/attach and focus work in
+     * Ultimate, where those extra layout passes could run after scroll restore.
+     */
+    private fun reconcileCard(note: Note) {
+        val entry = cards[note.id]
+        if (entry != null &&
+            entry.inlay.isValid &&
+            inlayAtNoteLine(entry.inlay, note, editor.document.lineCount)
+        ) {
+            entry.card.rebuild()
+            entry.note = note
+        } else {
+            cards.remove(note.id)?.let { if (it.inlay.isValid) Disposer.dispose(it.inlay) }
             addCard(note)
         }
     }
@@ -473,12 +513,9 @@ class NoteInlayController(
                 val note = onSave(text)
                 if (note != null && note.file == rel) {
                     skipNextRebuild = true
-                    // Reply: the parent card already exists — drop its old inlay
-                    // and re-add it (now containing the reply). Add: no existing
-                    // card, so this just renders the new one. Either way it lands
-                    // in place, nested correctly, without a full refresh.
-                    cards.remove(note.id)?.let { if (it.inlay.isValid) Disposer.dispose(it.inlay) }
-                    addCard(note)
+                    // Reply: update the existing parent component. Add: create
+                    // the genuinely new card. Both happen in this same pass.
+                    reconcileCard(note)
                 }
             }
         }
@@ -506,8 +543,10 @@ class NoteInlayController(
             // clipped to one line and earlier lines don't scroll out of view.
             field.addDocumentListener(object : DocumentListener {
                 override fun documentChanged(event: DocumentEvent) {
-                    field.revalidate()
-                    resizeInlay(inlay)
+                    keepScroll {
+                        field.revalidate()
+                        resizeInlay(inlay, host)
+                    }
                 }
             })
         }
@@ -515,8 +554,28 @@ class NoteInlayController(
     }
 
     /** Re-measure a block inlay immediately after its embedded editor changed height. */
-    private fun resizeInlay(inlay: Inlay<*>) {
-        if (inlay.isValid) inlay.update()
+    private fun resizeInlay(inlay: Inlay<*>, component: java.awt.Component) {
+        if (!inlay.isValid) return
+        invalidateDeep(component)
+        (inlay.renderer as? java.awt.Component)?.let {
+            invalidateDeep(it)
+            // Older platform implementations calculate the inlay height from
+            // the renderer's current bounds, updated by validate().
+            it.validate()
+        }
+        inlay.update()
+    }
+
+    /**
+     * BoxLayout and GridBagLayout cache nested preferred sizes. Clear the whole
+     * embedded hierarchy before asking the inlay to update so reply growth and
+     * shrinkage are measured in this viewport-preserved pass, not later.
+     */
+    private fun invalidateDeep(component: java.awt.Component) {
+        if (component is java.awt.Container) {
+            component.components.forEach(::invalidateDeep)
+        }
+        component.invalidate()
     }
 
     /**

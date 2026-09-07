@@ -1,27 +1,51 @@
 package one.bitby.incomm
 
 import com.intellij.openapi.application.WriteAction
+import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.ui.EditorTextField
+import com.intellij.ui.InplaceButton
 import com.intellij.util.ui.UIUtil
 import one.bitby.incomm.anchor.Anchoring
 import one.bitby.incomm.actions.CaretNote
 import one.bitby.incomm.editor.IncommEditorTracker
 import one.bitby.incomm.model.AUTHOR_AGENT
 import one.bitby.incomm.model.AUTHOR_USER
+import one.bitby.incomm.settings.IncommSettings
 import one.bitby.incomm.store.IncommPaths
 import one.bitby.incomm.store.NotesService
 import one.bitby.incomm.ui.AddPlusGutterIconRenderer
 import one.bitby.incomm.ui.IncommColors
 import one.bitby.incomm.ui.NoteGutterIconRenderer
 import one.bitby.incomm.ui.NoteThreadComponent
+import java.awt.Component
+import java.awt.Container
 import java.nio.file.Files
 import java.nio.file.Paths
 
 /** Ground-truth checks that editor visuals actually attach. */
 class EditorIntegrationTest : BasePlatformTestCase() {
+
+    private inline fun <reified T : Component> descendants(root: Component): List<T> {
+        val found = mutableListOf<T>()
+        val pending = ArrayDeque<Component>()
+        pending.add(root)
+        while (pending.isNotEmpty()) {
+            val component = pending.removeFirst()
+            if (component is T) found.add(component)
+            if (component is Container) pending.addAll(component.components)
+        }
+        return found
+    }
+
+    private fun setScrollOffset(editor: Editor, offset: Int): Int {
+        editor.scrollingModel.scrollVertically(offset)
+        UIUtil.dispatchAllInvocationEvents()
+        return editor.scrollingModel.verticalScrollOffset
+    }
 
     private fun openOnDisk(name: String, text: String): VirtualFile {
         val baseDir = Paths.get(project.basePath!!)
@@ -180,6 +204,92 @@ class EditorIntegrationTest : BasePlatformTestCase() {
 
         service.clearAll()
         service.flushWrites()
+    }
+
+    fun testReplySaveAndDeleteKeepViewportAndCardInlay() {
+        val text = (1..160).joinToString("\n") { "line $it" } + "\n"
+        val vf = openOnDisk("reply_scroll.txt", text)
+        val editor = myFixture.editor
+        val rel = IncommPaths.relPath(project, vf)!!
+        val service = NotesService.getInstance(project)
+        val settings = IncommSettings.getInstance().data
+        val oldMarkdown = settings.enableUserMarkdown
+
+        try {
+            settings.enableUserMarkdown = true
+            val note = service.addNote(
+                rel,
+                50,
+                50,
+                "A **Markdown** comment with enough text to wrap across the inline card.",
+                AUTHOR_USER,
+                Anchoring.splitLines(editor.document.text),
+            )
+            val tracker = IncommEditorTracker.getInstance(project)
+            tracker.start()
+            UIUtil.dispatchAllInvocationEvents()
+
+            val cardInlay = editor.inlayModel
+                .getBlockElementsInRange(0, editor.document.textLength)
+                .single()
+            val initialHeight = cardInlay.heightInPixels
+
+            tracker.startInlineReply(editor, note.id)
+            UIUtil.dispatchAllInvocationEvents()
+            val field = descendants<EditorTextField>(editor.component).single()
+            field.text = """
+                A reply with **Markdown**.
+
+                - first item
+                - second item
+                - third item
+                - fourth item
+            """.trimIndent()
+            UIUtil.dispatchAllInvocationEvents()
+
+            val beforeSave = setScrollOffset(editor, 500)
+            assertTrue("editor should be scrolled for the viewport regression", beforeSave > 0)
+            descendants<InplaceButton>(editor.component)
+                .single { it.toolTipText == "Save" }
+                .doClick()
+            UIUtil.dispatchAllInvocationEvents()
+
+            assertEquals("saving a reply keeps the viewport", beforeSave, editor.scrollingModel.verticalScrollOffset)
+            assertSame(
+                "saving a reply keeps the existing card inlay",
+                cardInlay,
+                editor.inlayModel.getBlockElementsInRange(0, editor.document.textLength).single(),
+            )
+            assertTrue(
+                "saving a reply grows the card synchronously: $initialHeight -> ${cardInlay.heightInPixels}",
+                cardInlay.heightInPixels > initialHeight,
+            )
+            assertEquals(1, service.find(note.id)!!.replies.size)
+
+            val beforeDelete = setScrollOffset(editor, 500)
+            descendants<InplaceButton>(editor.component)
+                .filter { it.toolTipText == "Delete" }
+                .last()
+                .doClick()
+            UIUtil.dispatchAllInvocationEvents()
+
+            assertEquals("deleting a reply keeps the viewport", beforeDelete, editor.scrollingModel.verticalScrollOffset)
+            assertSame(
+                "deleting a reply keeps the existing card inlay",
+                cardInlay,
+                editor.inlayModel.getBlockElementsInRange(0, editor.document.textLength).single(),
+            )
+            assertEquals(
+                "deleting a reply restores the original card height synchronously",
+                initialHeight,
+                cardInlay.heightInPixels,
+            )
+            assertTrue(service.find(note.id)!!.replies.isEmpty())
+        } finally {
+            settings.enableUserMarkdown = oldMarkdown
+            service.clearAll()
+            service.flushWrites()
+        }
     }
 
     fun testInlineAddEmbedsComposerThenCreatesNote() {

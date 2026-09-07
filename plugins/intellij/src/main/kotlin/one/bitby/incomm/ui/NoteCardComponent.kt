@@ -4,10 +4,6 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonShortcuts
 import com.intellij.openapi.actionSystem.CustomShortcutSet
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.editor.ex.util.EditorScrollingPositionKeeper
 import com.intellij.openapi.fileTypes.FileTypes
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
@@ -28,8 +24,6 @@ import java.awt.Graphics2D
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.RenderingHints
-import java.awt.TextComponent
-import java.awt.TextField
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.event.MouseListener
@@ -47,7 +41,6 @@ import javax.swing.SwingUtilities
  */
 class NoteCardComponent(
     private val project: Project,
-    private val editor: com.intellij.openapi.editor.Editor,
     private val noteId: String,
     private val onReply: () -> Unit,
     private val onResolve: (Boolean) -> Unit,
@@ -55,6 +48,7 @@ class NoteCardComponent(
     private val onDeleteReply: (String) -> Unit = {},
     private val onEdit: (String, String?) -> Unit = { _, _ -> },
     private val onHover: (Boolean) -> Unit,
+    private val withViewportPreserved: ((() -> Unit) -> Unit) = { it() },
     private val onContentResized: () -> Unit = {},
 ) : JPanel(BorderLayout()) {
 
@@ -91,20 +85,10 @@ class NoteCardComponent(
 
     fun rebuild() {
         val note = NotesService.getInstance(project).find(noteId) ?: return
-        // Keep the editor viewport fixed while the card changes height (the
-        // embedded component's real height lands after layout settles).
-        if (editor.isDisposed) {
+        withViewportPreserved {
             rebuildFor(note)
-            return
+            onContentResized()
         }
-        val keeper = EditorScrollingPositionKeeper(editor)
-        keeper.savePosition()
-        rebuildFor(note)
-        keeper.restorePosition(false)
-        ApplicationManager.getApplication().invokeLater({
-            if (!editor.isDisposed) keeper.restorePosition(false)
-            keeper.dispose()
-        }, ModalityState.any())
     }
 
     /** Start editing the original comment in place (used by the Edit action). */
@@ -124,11 +108,6 @@ class NoteCardComponent(
     }
 
     private fun rebuildFor(note: Note) {
-        val oldSize = preferredSize
-        if (body.componentCount > 0) {
-            preferredSize = oldSize
-        }
-        
         focusAfterBuild = null
 
         titleLabel.text = titleHtml(note)
@@ -154,10 +133,6 @@ class NoteCardComponent(
         revalidate()
         repaint()
         SwingUtilities.invokeLater {
-            if (preferredSize == oldSize) {
-                preferredSize = null
-                revalidate()
-            }
             focusAfterBuild?.let { focus(it) }
         }
     }
@@ -244,13 +219,13 @@ class NoteCardComponent(
         // A plain EditorTextField reports a one-line preferred height even in
         // multi-line mode, so it never grows. Size it to its actual line count.
         val field = object : EditorTextField(text, project, FileTypes.PLAIN_TEXT) {
-//            override fun getPreferredSize(): java.awt.Dimension {
-//                val base = super.getPreferredSize()
-//                val ed = getEditor() ?: return base
-//                val lines = ed.document.lineCount.coerceAtLeast(1)
-//                val h = ed.lineHeight * lines + insets.top + insets.bottom + JBUI.scale(6)
-//                return java.awt.Dimension(base.width, maxOf(base.height, h))
-//            }
+            override fun getPreferredSize(): java.awt.Dimension {
+                val base = super.getPreferredSize()
+                val ed = getEditor() ?: return base
+                val lines = ed.document.lineCount.coerceAtLeast(1)
+                val h = ed.lineHeight * lines + insets.top + insets.bottom + JBUI.scale(6)
+                return java.awt.Dimension(base.width, maxOf(base.height, h))
+            }
         }
         field.setOneLineMode(false)
         field.background = ThreadUi.USER_BG
@@ -274,8 +249,10 @@ class NoteCardComponent(
         // so the editor isn't clipped to one line.
         field.addDocumentListener(object : com.intellij.openapi.editor.event.DocumentListener {
             override fun documentChanged(event: com.intellij.openapi.editor.event.DocumentEvent) {
-                field.revalidate()
-                onContentResized()
+                withViewportPreserved {
+                    field.revalidate()
+                    onContentResized()
+                }
             }
         })
         return field
@@ -284,6 +261,7 @@ class NoteCardComponent(
     private fun saveEdit(key: String, replyId: String?, text: String) {
         val trimmed = text.trim()
         if (trimmed.isNotEmpty()) {
+            editingKey = null
             onEdit(trimmed, replyId)
         } else {
             editingKey = null

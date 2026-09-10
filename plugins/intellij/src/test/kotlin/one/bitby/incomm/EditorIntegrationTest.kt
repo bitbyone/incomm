@@ -23,6 +23,7 @@ import one.bitby.incomm.ui.NoteGutterIconRenderer
 import one.bitby.incomm.ui.NoteThreadComponent
 import java.awt.Component
 import java.awt.Container
+import java.awt.event.ComponentEvent
 import java.nio.file.Files
 import java.nio.file.Paths
 
@@ -233,6 +234,18 @@ class EditorIntegrationTest : BasePlatformTestCase() {
                 .getBlockElementsInRange(0, editor.document.textLength)
                 .single()
             val initialHeight = cardInlay.heightInPixels
+
+            // Exercise the width-resize path before reply updates. It is
+            // intentionally asynchronous so inlay.update() cannot re-enter it.
+            val content = editor.contentComponent
+            val originalSize = content.size
+            content.setSize((originalSize.width - 20).coerceAtLeast(1), originalSize.height)
+            content.dispatchEvent(ComponentEvent(content, ComponentEvent.COMPONENT_RESIZED))
+            UIUtil.dispatchAllInvocationEvents()
+            assertTrue("card remains valid after editor resize", cardInlay.isValid)
+            content.setSize(originalSize)
+            content.dispatchEvent(ComponentEvent(content, ComponentEvent.COMPONENT_RESIZED))
+            UIUtil.dispatchAllInvocationEvents()
 
             tracker.startInlineReply(editor, note.id)
             UIUtil.dispatchAllInvocationEvents()

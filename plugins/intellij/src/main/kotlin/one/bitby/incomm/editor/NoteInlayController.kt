@@ -63,10 +63,13 @@ class NoteInlayController(
     private val cards = LinkedHashMap<String, CardEntry>()
     private var composeInlay: Inlay<*>? = null
     private var scrollMutationDepth = 0
+    private var resizingInlay = false
+    private var contentWidth = editor.contentComponent.width
+    private var widthResizeScheduled = false
 
     private val resizeListener = object : ComponentAdapter() {
         override fun componentResized(e: ComponentEvent) {
-            for (entry in cards.values) resizeInlay(entry.inlay, entry.host)
+            scheduleWidthResize()
         }
     }
 
@@ -154,6 +157,31 @@ class NoteInlayController(
         restore()
         // Re-assert after layout settles and the async notes-changed refresh runs.
         ApplicationManager.getApplication().invokeLater({ restore() }, ModalityState.any())
+    }
+
+    /**
+     * Re-measure cards after the editor width settles. Never resize directly
+     * from componentResized: renderer validation updates the inlay, which can
+     * synchronously resize the editor and fire componentResized again.
+     */
+    private fun scheduleWidthResize() {
+        if (widthResizeScheduled || editor.isDisposed) return
+        if (editor.contentComponent.width == contentWidth) return
+        widthResizeScheduled = true
+        ApplicationManager.getApplication().invokeLater({
+            widthResizeScheduled = false
+            if (editor.isDisposed) return@invokeLater
+            val newWidth = editor.contentComponent.width
+            if (newWidth == contentWidth) return@invokeLater
+            contentWidth = newWidth
+            keepScroll {
+                for (entry in cards.values) resizeInlay(entry.inlay, entry.host)
+            }
+            // A scrollbar may have changed the width during the resize. The
+            // nested component event schedules another pass; this is a fallback
+            // for platforms that coalesce that event away.
+            scheduleWidthResize()
+        }, ModalityState.any())
     }
 
     /**
@@ -555,15 +583,20 @@ class NoteInlayController(
 
     /** Re-measure a block inlay immediately after its embedded editor changed height. */
     private fun resizeInlay(inlay: Inlay<*>, component: java.awt.Component) {
-        if (!inlay.isValid) return
-        invalidateDeep(component)
-        (inlay.renderer as? java.awt.Component)?.let {
-            invalidateDeep(it)
-            // Older platform implementations calculate the inlay height from
-            // the renderer's current bounds, updated by validate().
-            it.validate()
+        if (!inlay.isValid || resizingInlay) return
+        resizingInlay = true
+        try {
+            invalidateDeep(component)
+            (inlay.renderer as? java.awt.Component)?.let {
+                invalidateDeep(it)
+                // Older platform implementations calculate the inlay height
+                // from renderer bounds synchronized during validate().
+                it.validate()
+            }
+            inlay.update()
+        } finally {
+            resizingInlay = false
         }
-        inlay.update()
     }
 
     /**

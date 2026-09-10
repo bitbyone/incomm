@@ -306,15 +306,18 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
    works. This was the single biggest source of "the input doesn't work" bugs. **Gotcha:** an
    `EditorTextField` reports a *one-line* preferred height even in multi-line mode, so it won't
    grow — override `getPreferredSize()` to `lineHeight * lineCount` and re-measure the enclosing
-   block inlay (`inlay.update()`) synchronously on each document change.
+   block inlay synchronously on each document change.
 4. **Register confirm/cancel keys with `registerCustomShortcutSet`**, not Swing input maps —
    component-local IDE shortcuts win over the editor's global actions (Cmd/Ctrl+Enter = save,
    Esc = cancel; plain Enter stays a newline in the multi-line editor).
 5. **Prevent viewport jumps** when adding/removing/resizing inlays with these measures,
    all present in `NoteInlayController` / `NoteCardComponent` / `IncommEditorTracker`:
-   - `EditorScrollingPositionKeeper.savePosition()` → mutate → `restorePosition(false)` **and
-     again in an `invokeLater`** (embedded components get their real height only after layout);
-     `refreshAll` wraps the *whole* rebuild in such keepers for every visible editor.
+   - `NoteInlayController.keepScroll` preserves the raw pixel offset around mutations and restores
+     it again in `invokeLater`; `refreshAll` preserves a logical top-line anchor for every editor.
+   - **Never resize an inlay directly from `componentResized`.** Renderer validation can call
+     `inlay.update()`, which resizes the editor and synchronously fires `componentResized` again
+     (an EDT recursion ending in `StackOverflowError` on IU 2026.2). Coalesce width changes through
+     `invokeLater` and keep `resizeInlay` reentrancy-guarded.
    - A `noScrollHost()` panel that overrides `scrollRectToVisible` to a no-op (so focusing an
      inner field doesn't scroll the page to it).
    - **Incremental reconciliation** in rebuild (don't dispose+re-add all cards; update in place).

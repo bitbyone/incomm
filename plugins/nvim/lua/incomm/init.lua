@@ -128,6 +128,14 @@ function M.ensure()
   end
 end
 
+--- Redraw every tracked buffer. Call this after changing anything the plugin
+--- cannot see for itself -- a `card.offset` that depends on some other
+--- plugin's state, say, or a highlight override.
+function M.redraw()
+  require("incomm.ui.highlights").derive()
+  require("incomm.track").redraw_all()
+end
+
 --- The service for the current project (root, branch, notes, mutations).
 ---@return incomm.Service
 function M.service()

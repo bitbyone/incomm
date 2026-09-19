@@ -337,6 +337,11 @@ CLI -- it implements §11 directly. Module map (`lua/incomm/`):
 - Bubble width is the one setting with a runtime command (`:IncommWidth`, with
   `!` to persist it under `stdpath("state")`); everything else lives in the
   user's own config.
+- `card.offset` (a number or `function(win, bufnr)`) is the extension point for
+  anything that shifts the text away from the window's left edge — a centring
+  plugin's inline margin is invisible to virtual lines, so the client tells
+  incomm how far right to hang its cards. It is re-read on scroll/resize/idle
+  and the cards redraw when the answer changes.
 - **`watch.lua`** — libuv watches on `.incomm/` and `.git/HEAD`, plus a
   `FocusGained` re-sync; it watches the project root until `.incomm/` first
   appears, since the first writer may be the agent. **`actions.lua`** — one

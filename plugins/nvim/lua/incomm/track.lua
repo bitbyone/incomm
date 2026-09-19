@@ -100,7 +100,25 @@ function M.render_buf(bufnr)
   if not t or not vim.api.nvim_buf_is_loaded(bufnr) then
     return
   end
+  t.offset = render.offset_for(bufnr)
   render.render(bufnr, t.svc, t.rel, M.live_positions(bufnr))
+end
+
+--- Redraw only if the client's `card.offset` now answers differently.
+---
+--- Whatever supplies that offset -- a centring plugin, a zen mode -- can change
+--- it with no event incomm would otherwise care about, so this runs on the
+--- cheap ones (a scroll, a resize, going idle) and compares two numbers before
+--- doing any work.
+---@param bufnr integer
+function M.check_offset(bufnr)
+  local t = tracked[bufnr]
+  if not t or not vim.api.nvim_buf_is_loaded(bufnr) then
+    return
+  end
+  if render.offset_for(bufnr) ~= t.offset then
+    M.render_buf(bufnr)
+  end
 end
 
 --- Read the marks back and persist the positions they moved to.
@@ -275,6 +293,14 @@ function M.attach(bufnr)
     buffer = bufnr,
     callback = function()
       M.render_buf(bufnr)
+    end,
+  })
+  -- And a left margin that belongs to somebody else can change under us.
+  vim.api.nvim_create_autocmd({ "WinScrolled", "WinEnter", "CursorHold" }, {
+    group = augroup,
+    buffer = bufnr,
+    callback = function()
+      M.check_offset(bufnr)
     end,
   })
 

@@ -50,19 +50,49 @@ local function code_indent(bufnr, line)
   return width
 end
 
+--- The first window showing `bufnr`, or nil.
+---@param bufnr integer
+---@return integer?
+local function window_for(bufnr)
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(win) == bufnr then
+      return win
+    end
+  end
+  return nil
+end
+
 --- Columns available for a card in the first window showing `bufnr`.
 ---@param bufnr integer
 ---@return integer
 local function text_width(bufnr)
-  local width = 80
-  for _, win in ipairs(vim.api.nvim_list_wins()) do
-    if vim.api.nvim_win_get_buf(win) == bufnr then
-      local info = vim.fn.getwininfo(win)[1]
-      width = vim.api.nvim_win_get_width(win) - (info and info.textoff or 0)
-      break
-    end
+  local win = window_for(bufnr)
+  if not win then
+    return 80
   end
-  return math.max(width, 24)
+  local info = vim.fn.getwininfo(win)[1]
+  return math.max(vim.api.nvim_win_get_width(win) - (info and info.textoff or 0), 24)
+end
+
+--- The client-supplied left offset for this buffer, from `card.offset`.
+---
+--- A card is buffer-scoped and a margin is window-scoped, so the first window
+--- showing the buffer decides -- the same compromise a centring plugin makes
+--- when one file is open in two panes of different widths.
+---@param bufnr integer
+---@return integer
+function M.offset_for(bufnr)
+  local offset = config.options.card.offset
+  if type(offset) == "function" then
+    local win = window_for(bufnr)
+    local ok, value = pcall(offset, win, bufnr)
+    if not ok then
+      vim.notify("incomm: card.offset failed: " .. tostring(value), vim.log.levels.WARN)
+      return 0
+    end
+    offset = value
+  end
+  return math.max(math.floor(tonumber(offset) or 0), 0)
 end
 
 --- The virt_lines block for one thread.
@@ -183,6 +213,7 @@ function M.render(bufnr, svc, rel, live_positions)
   state.apply_defaults(notes)
   local line_count = vim.api.nvim_buf_line_count(bufnr)
   local width = text_width(bufnr)
+  local offset = M.offset_for(bufnr)
   local signs = config.options.signs
 
   for _, note in ipairs(notes) do
@@ -199,7 +230,7 @@ function M.render(bufnr, svc, rel, live_positions)
         opts.sign_hl_group = sign_hl
       end
       if show_card then
-        local indent = config.options.card.align_to_code and code_indent(bufnr, s) or 0
+        local indent = offset + (config.options.card.align_to_code and code_indent(bufnr, s) or 0)
         opts.virt_lines = M.card_lines(note, s, e, width, indent)
         -- Above the code it belongs to -- except on line 1, where Neovim draws
         -- nothing at all above the first buffer line. There the card goes

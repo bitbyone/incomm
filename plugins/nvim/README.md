@@ -153,6 +153,7 @@ require("incomm").setup({
     border = "rounded",    -- "single" | "double" | "solid" | 8 glyphs | false
     width = 80,            -- fixed bubble width, whatever the text is
     align_to_code = true,  -- hang the card over the first non-blank column
+    offset = 0,            -- extra left shift; number or function(win, bufnr)
     reply_indent = 2,
     trailing_blank = false,
     dim = 30,              -- % the card's text is pulled back toward the editor
@@ -239,6 +240,32 @@ first line, a thin band down the rest — so nothing ever paints over the code.
   replies arriving from outside raise a notification.
 * **The explorer** is its own float layout, not a picker, because a picker
   previews a *file* and what is wanted is a *thread*. See below.
+
+## Living with other plugins
+
+A card is drawn as virtual *lines*. Anything that moves the text away from the
+window's left edge without moving the window — a centring plugin, a virtual left
+margin, a zen mode — usually does it with inline virtual text on the real lines,
+which virtual lines never see. The card would then sit at the margin while the
+code it belongs to sits in the middle of the window.
+
+`card.offset` is the seam for that. Give it a number, or a function that is
+handed the window showing the buffer:
+
+```lua
+require("incomm").setup({
+  card = {
+    offset = function(win)
+      return require("config.center").pad(win)   -- whatever your margin is
+    end,
+  },
+})
+```
+
+It is re-read when the window scrolls, resizes, is entered or goes idle, and the
+cards are redrawn when the answer changes — so a margin that appears or moves is
+followed without either plugin knowing about the other. `require("incomm").redraw()`
+forces it, and also re-derives the palette.
 
 ## The explorer
 

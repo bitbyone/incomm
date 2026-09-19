@@ -53,6 +53,24 @@ local defaults = {
     --- anchored to, the way the IDE hangs a comment over its own code. False
     --- pins every card to the left margin instead.
     align_to_code = true,
+    --- Extra columns to shift every card right, on top of the code's own
+    --- indent. A number, or `function(win, bufnr) -> integer`.
+    ---
+    --- This is the seam for anything that moves the *text* away from the
+    --- window's left edge without moving the window: a centring plugin, a
+    --- virtual left margin, a zen mode. Such margins are usually inline
+    --- virtual text on real lines, which a card -- drawn as virtual *lines* --
+    --- knows nothing about, so it would sit at the margin while the code it
+    --- belongs to sits in the middle of the window.
+    ---
+    ---     offset = function(win)
+    ---       return require("config.center").pad(win)
+    ---     end
+    ---
+    --- It is re-read whenever the window scrolls, resizes or goes idle, and a
+    --- card is redrawn when the answer changes; call `require("incomm").redraw()`
+    --- to force it.
+    offset = 0,
     --- Indent applied to replies, in spaces.
     reply_indent = 2,
     --- Blank line after the last bubble, to separate the card from the code.

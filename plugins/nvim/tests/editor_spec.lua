@@ -221,6 +221,65 @@ T.test("the card hangs over the first non-blank column of its own line", functio
   end)
 end)
 
+T.test("card.offset shifts a card right, for margins incomm cannot see", function()
+  T.with_tmpdir(function(dir)
+    local bufnr, svc = open_fixture(dir)
+    local config = require("incomm.config")
+    config.options.card.width = 40
+    svc:add_note("src/main.go", 4, 4, "over a centred column")
+    track.refresh(bufnr)
+
+    ---@return integer
+    local function lead()
+      local card = marks(bufnr, render.ns)[1][4].virt_lines
+      local text = ""
+      for _, chunk in ipairs(card[2]) do -- the box's top edge
+        text = text .. chunk[1]
+      end
+      return #(text:match("^(%s*)"))
+    end
+    T.eq(lead(), 0, "no offset by default")
+
+    -- A plain number...
+    config.options.card.offset = 12
+    track.render_buf(bufnr)
+    T.eq(lead(), 12)
+
+    -- ...or a function, which is how a centring plugin plugs in: it is handed
+    -- the window showing the buffer.
+    local saw_win, saw_buf
+    config.options.card.offset = function(win, buf)
+      saw_win, saw_buf = win, buf
+      return 7
+    end
+    track.render_buf(bufnr)
+    T.eq(lead(), 7)
+    T.eq(saw_buf, bufnr, "the buffer is passed through")
+    T.ok(saw_win and vim.api.nvim_win_is_valid(saw_win), "so is a window showing it")
+
+    -- A hook that throws must not take the cards down with it.
+    config.options.card.offset = function()
+      error("boom")
+    end
+    track.render_buf(bufnr)
+    T.eq(lead(), 0, "a failing offset falls back to none")
+
+    -- And a change of answer is picked up without a model change.
+    local value = 5
+    config.options.card.offset = function()
+      return value
+    end
+    track.render_buf(bufnr)
+    T.eq(lead(), 5)
+    value = 9
+    track.check_offset(bufnr)
+    T.eq(lead(), 9, "the cheap check redrew it")
+
+    config.options.card.offset = config.defaults.card.offset
+    config.options.card.width = config.defaults.card.width
+  end)
+end)
+
 T.test("the palette is derived from the colourscheme, not hard-coded", function()
   local hl = require("incomm.ui.highlights")
   local saved = vim.o.termguicolors

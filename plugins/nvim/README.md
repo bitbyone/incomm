@@ -104,6 +104,10 @@ A remembered width is a single number under `stdpath("state")` (see
 thing you looked at and decided. Nothing else is persisted: the rest of the
 configuration belongs in your dotfiles, under version control.
 
+The composer opens as wide as the bubble the text is about to become — it
+follows `card.width`, borders included — so what you type sits in the column it
+will be read in.
+
 The composer is a normal buffer in a float: write markdown, **`⌘⏎` saves** (the
 IDE's key — `<C-CR>` and `<C-s>` too, for terminals that cannot send a Cmd
 chord), `<Esc>` or `q` cancels, and `<CR>` is just a newline.
@@ -162,6 +166,8 @@ require("incomm").setup({
     save = { "<D-CR>", "<C-CR>", "<C-s>" },  -- Cmd-Enter, as in the IDE
     cancel = { "<Esc>", "q", "<C-c>" },
     anchor = "cursor",     -- or "center"; the explorer always centres
+    width = nil,           -- total columns; nil follows card.width
+    height = 5,            -- rows, growing to fit an existing comment
   },
   explorer = {
     width = 0.9,           -- fractions of the editor the explorer covers

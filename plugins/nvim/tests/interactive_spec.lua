@@ -166,6 +166,40 @@ T.test("every configured save key saves, and Cmd-Enter is one of them", function
   end)
 end)
 
+T.test("the composer is exactly as wide as the bubble it becomes", function()
+  T.with_tmpdir(function(dir)
+    local config = require("incomm.config")
+    open_fixture(dir)
+
+    ---@return integer total including borders
+    local function composer_total()
+      local win = composer_win()
+      local cfg = vim.api.nvim_win_get_config(win)
+      return cfg.width + 2 -- the border sits outside the window's columns
+    end
+
+    config.options.card.width = 60
+    actions.start_thread()
+    T.eq(composer_total(), 60, "follows card.width by default")
+    feed("<Esc>")
+
+    -- An explicit width wins, and means the same thing: outer columns.
+    config.options.composer.width = 40
+    actions.start_thread()
+    T.eq(composer_total(), 40)
+    feed("<Esc>")
+
+    -- Never wider than the editor, whatever it is asked for.
+    config.options.composer.width = 10000
+    actions.start_thread()
+    T.ok(composer_total() <= vim.o.columns, "clamped to " .. vim.o.columns)
+    feed("<Esc>")
+
+    config.options.composer.width = config.defaults.composer.width
+    config.options.card.width = config.defaults.card.width
+  end)
+end)
+
 T.test("an empty comment is not saved", function()
   T.with_tmpdir(function(dir)
     local _, svc = open_fixture(dir)

@@ -56,8 +56,14 @@ function M.open(opts)
   vim.b[bufnr].incomm_composer = true
 
   local settings = config.options.composer
-  local width = math.min(math.max(60, math.floor(vim.o.columns * 0.5)), vim.o.columns - 8)
-  local height = math.min(math.max(#lines + 1, 5), math.max(5, vim.o.lines - 8))
+  -- As wide as the bubble the text is about to become, borders included, so
+  -- what you type sits in the same column as what you get. Half the editor --
+  -- what this used to be -- means a composer that overshoots every card on a
+  -- wide window, tied to nothing in particular.
+  local total = settings.width or config.options.card.width
+  local width = math.max(math.min(total, vim.o.columns - 4) - 2, 20)
+  local rows = math.max(settings.height or 5, 3)
+  local height = math.min(math.max(#lines + 1, rows), math.max(rows, vim.o.lines - 8))
   local placement = (opts.anchor or settings.anchor) == "center"
       and {
         relative = "editor",

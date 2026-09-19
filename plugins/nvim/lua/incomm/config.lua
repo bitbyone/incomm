@@ -91,6 +91,12 @@ local defaults = {
     --- Where it opens: "cursor" next to the code, "center" in the editor.
     --- The explorer always centres, since there is no cursor to sit beside.
     anchor = "cursor",
+    --- Total width in columns, borders included, so it matches a bubble
+    --- exactly. nil follows `card.width`: what you type is as wide as what it
+    --- becomes. Clamped to the editor.
+    width = nil,
+    --- Height in rows, excluding borders. Grows to fit an existing comment.
+    height = 5,
   },
 
   --- The thread explorer's float layout.

@@ -4,8 +4,10 @@
 
 `incomm` lets you attach threaded notes to exact lines and ranges in a codebase, then share those notes through a small branch-scoped JSON state file. Humans can leave review feedback, TODOs, questions, implementation hints, or missing context directly next to the relevant code. Agents can read that distributed context through the CLI, act on it, reply to threads, resolve them, or leave their own line-anchored observations for the human or a future agent pass.
 
-![Incomm thread](docs/images/intellij-screenshot.png)
-![Incomm explorer](docs/images/intellij-explorer.png)
+*The IntelliJ plugin:*
+
+![Incomm thread in IntelliJ](docs/images/intellij-screenshot.png)
+![Incomm explorer in IntelliJ](docs/images/intellij-explorer.png)
 
 ---
 
@@ -15,6 +17,7 @@
 - [Features](#features)
 - [Installation](#installation)
   - [IntelliJ Plugin](#intellij-plugin)
+  - [Neovim Plugin](#neovim-plugin)
   - [CLI](#cli)
 - [Quick Start](#quick-start)
 - [Why incomm?](#why-incomm)
@@ -28,12 +31,12 @@ Think of `incomm` as **distributed prompting across multiple files**: instead of
 
 It also works incredibly well for **local code review** or collaborating on large feature branches, keeping the conversation attached to the code itself rather than floating in a pull request UI that might be out of sync with your local state.
 
-The on-disk format and CLI are intentionally **editor/IDE agnostic**. At the moment, the only supported editor integration in this repository is the IntelliJ/JetBrains plugin, but other editor integrations (VS Code, Neovim, etc.) can implement the same shared specification.
+The on-disk format and CLI are intentionally **editor/IDE agnostic**. This repository ships two editor integrations -- the IntelliJ/JetBrains plugin and the Neovim plugin -- and any other editor (VS Code, Emacs, ...) can implement the same shared specification.
 
 ## Features
 
 - **Branch-scoped state**: Notes are stored in `<project-root>/.incomm/notes_<branch>.json`. When you switch git branches, the conversation switches with it.
-- **Robust Anchoring**: Comments stay attached to the right line even as files change (using best-effort text anchors, prefixes, context, and checksums). The IntelliJ plugin updates these positions live as you type.
+- **Robust Anchoring**: Comments stay attached to the right line even as files change (using best-effort text anchors, prefixes, context, and checksums). Both editor plugins update these positions live as you type.
 - **Concurrent-safe**: The file format is designed for atomic writes. The CLI and the IDE can safely write to the same file concurrently without clobbering each other.
 - **Cross-environment**: Agents (like Opus or GPT) can interact natively using the standalone CLI, completely decoupling them from whatever IDE you are using.
 - **Agnostic & Lightweight**: No backend databases, no web services. Just a small JSON file committed or ignored in your repo.
@@ -42,7 +45,7 @@ The on-disk format and CLI are intentionally **editor/IDE agnostic**. At the mom
 
 ## Installation
 
-The project consists of two independent components: the CLI (for agents and scripting) and the IntelliJ plugin (for human interaction).
+The project consists of independent components: the CLI (for agents and scripting) and the editor plugins (for human interaction). They share nothing but the on-disk format in [AGENTS.md](AGENTS.md) §11.
 
 ### IntelliJ Plugin
 
@@ -59,6 +62,46 @@ The plugin gives you a rich UI to add, reply to, and resolve comments directly i
    ./gradlew buildPlugin
    ```
 3. Install the generated ZIP (`plugins/intellij/build/distributions/incomm-*.zip`) in IntelliJ via **Settings | Plugins | ⚙️ | Install Plugin from Disk...**
+
+### Neovim Plugin
+
+Threads render as cards above the code they anchor to, follow it as you edit,
+and stay in sync with whatever the agent is doing through the CLI.
+
+```
+   6               call.respondHtml {
+                        L8  open
+                       ╭───────────────────────────────────────────────────╮
+                       │ Jan Tobola  2m ago                                │
+                       │ This block should be extracted into its own       │
+                       │ renderer.                                         │
+                       ╰───────────────────────────────────────────────────╯
+                         ╭─────────────────────────────────────────────────╮
+                         │ Agent (Opus 5)  just now                        │
+                         │ Agreed, pulling it into HomePage.kt.            │
+                         ╰─────────────────────────────────────────────────╯
+ ●  8                        body {
+    9                            h1 { +"Hello page" }
+```
+
+The plugin lives in `plugins/nvim`, so point your plugin manager at that
+subdirectory rather than at the repository root -- with lazy.nvim:
+
+```lua
+{
+  "bitbyone/incomm",
+  name = "incomm",
+  event = "VeryLazy",
+  config = function(plugin)
+    vim.opt.rtp:append(plugin.dir .. "/plugins/nvim")
+    require("incomm").setup({})
+  end,
+}
+```
+
+Then `:Incomm thread` on a line, `:Incomm explorer` to browse. See
+[plugins/nvim/README.md](plugins/nvim/README.md) for commands, options and
+keymaps. Requires Neovim 0.10+.
 
 ### CLI
 
@@ -85,6 +128,13 @@ The Go CLI is the workhorse for agents and automated workflows.
 2. Right-click the gutter next to any line of code and select **Incomm: Start New Thread** (or bind a shortcut in Keymap).
 3. Type your note (e.g., *"Agent: Please refactor this to use the new caching service."*).
 4. Save. A `.incomm/` folder will be created at your project root.
+
+### For Humans (Neovim)
+
+1. Open a file in a project with the `incomm` plugin installed.
+2. `:Incomm thread` on the line, or `:'<,'>Incomm thread` over a selection.
+3. Type your note in the composer and press `<C-s>`.
+4. The thread appears as a card above the code, and `.incomm/` is created at the project root.
 
 ### For Agents (CLI)
 
@@ -123,4 +173,4 @@ Traditional code review tools (like GitHub PRs) are fantastic for merging code, 
 
 ## Internals & Architecture
 
-If you are looking to contribute to `incomm`, build a new editor integration (like VS Code or Neovim), or want to understand the exact JSON schema and anchoring algorithm, please see [AGENTS.md](AGENTS.md).
+If you are looking to contribute to `incomm`, build a new editor integration (like VS Code or Emacs), or want to understand the exact JSON schema and anchoring algorithm, please see [AGENTS.md](AGENTS.md).

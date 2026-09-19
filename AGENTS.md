@@ -6,12 +6,13 @@ This document describes the internal architecture of `incomm` and serves as the 
 
 | Part | Path | Language | Who uses it | Purpose |
 |------|------|----------|-------------|---------|
-| **IntelliJ plugin** | `plugins/intellij/` | Kotlin (Gradle) | humans | Current supported editor integration: add/browse/reply/resolve/edit/delete line-anchored threads inline. |
+| **IntelliJ plugin** | `plugins/intellij/` | Kotlin (Gradle) | humans | Editor integration: add/browse/reply/resolve/edit/delete line-anchored threads inline. |
+| **Neovim plugin** | `plugins/nvim/` | Lua | humans | Editor integration: the same operations as cards, signs and `:Incomm` commands. |
 | **CLI** | `cli/` | Go (cobra) | agents, scripts, tools | IDE-agnostic API for list/read/add/reply/resolve/remove and low-level anchor edits; emits `--json`. |
 | **Shared spec** | §6 (this document) | — | every integration | The **single source of truth**: JSON schema + the anchoring algorithm. Integrations must implement it identically. |
-| **Fixtures** | `fixtures/` | — | both test suites | Shared sample data proving schema/anchoring parity across Kotlin and Go. |
+| **Fixtures** | `fixtures/` | — | every test suite | Shared sample data proving schema/anchoring parity across Kotlin, Go and Lua. |
 
-The plugin and CLI are **independent builds** that only agree on the shared spec and the on-disk file. The Go CLI is intentionally **not** part of the Gradle build, and the file format is not tied to IntelliJ.
+The plugins and the CLI are **independent builds** that only agree on the shared spec and the on-disk file. The Go CLI is intentionally **not** part of the Gradle build, the Neovim plugin has no build step at all, and the file format is not tied to any editor.
 
 ---
 
@@ -26,17 +27,17 @@ The plugin and CLI are **independent builds** that only agree on the shared spec
   (one file per git branch; falls back to `notes.json` when git is unavailable).
   Writers use **atomic writes** (temp file + rename). Editor integrations should
   use **merge-on-write** so their writes never clobber notes an agent added
-  concurrently (within a single note it's last-write-wins). The current IntelliJ
-  integration watches the file and live-reloads on external writes. When the
-  branch changes, both the integration and CLI switch to the corresponding file.
+  concurrently (within a single note it's last-write-wins). Both editor
+  integrations watch the file and live-reload on external writes. When the
+  branch changes, both the integrations and CLI switch to the corresponding file.
 - **Anchoring:** comments stay attached to the right line even as files change, via a
   best-effort text anchor (prefixes + context + checksum). Positions are recomputed
-  (reindexed) **live** by compatible integrations (the current IntelliJ plugin does it
-  as you type), and in the CLI via `reanchor`/`list`. If re-anchoring can't place a
+  (reindexed) **live** by compatible integrations (both editor plugins do it as you
+  type), and in the CLI via `reanchor`/`list`. If re-anchoring can't place a
   note confidently it's marked `orphaned`; an agent that knows where its edit landed
   can fix it with the low-level `anchor` CLI commands. The algorithm is specified in
-  §11 and implemented **identically** in `Anchoring.kt` (Kotlin) and `internal/anchor`
-  (Go); the shared fixtures enforce parity.
+  §11 and implemented **identically** in `Anchoring.kt` (Kotlin), `internal/anchor`
+  (Go) and `lua/incomm/anchor.lua` (Lua); the shared fixtures enforce parity.
 - **Authors & colors convention:** `user` = **blue**, `agent` = **green** throughout the
   UI; a note's state is colour-coded too (open = blue, resolved = green, orphaned = red).
   All colours come from the active IDE theme (`ui/IncommColors.kt`) — never hard-coded — and
@@ -71,6 +72,17 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 21)   # macOS; or any JDK 21 path
   (`BasePlatformTestCase`) on the EDT.
 - Gson is provided by the platform (no extra dependency). Kotlin stdlib is provided by the
   platform too (`kotlin.stdlib.default.dependency=false`).
+
+### Neovim plugin (requires **Neovim 0.10+**)
+
+No build step -- it is plain Lua. Point a plugin manager at `plugins/nvim`
+(not at the repo root, which is not a Neovim plugin), or add it to the
+runtimepath by hand:
+
+```bash
+nvim --cmd 'set rtp^=plugins/nvim' -c 'lua require("incomm").setup()'
+cd plugins/nvim && nvim --headless -l tests/run.lua   # run the test suite
+```
 
 ### CLI
 
@@ -145,7 +157,7 @@ any compatible editor/UI integration.
 
 ---
 
-## 6. Plugin architecture (`plugins/intellij/src/main/kotlin/one/bitby/incomm/`)
+## 6. IntelliJ plugin architecture (`plugins/intellij/src/main/kotlin/one/bitby/incomm/`)
 
 Everything hangs off two project-level `@Service` singletons (light services, no XML
 registration): **`NotesService`** (data) and **`IncommEditorTracker`** (editor wiring).
@@ -289,6 +301,49 @@ is what started it, followed by **replies**. Every action is prefixed `Incomm:`.
   (loads the model), starts the tracker on the EDT, then re-anchors from disk on a pooled
   thread and publishes a refresh.
 
+### 6.6 Neovim plugin (`plugins/nvim/`)
+
+Same behaviour, no Swing. Plain Lua, no build step, no runtime dependency on the
+CLI -- it implements §11 directly. Module map (`lua/incomm/`):
+
+- **`anchor.lua`** — the §11.4 algorithm, a line-by-line port of the Go version.
+  **`sha1.lua`** — SHA-1 on LuaJIT's bit ops, because Neovim ships only `sha256`
+  and the spec pins the checksum to sha1.
+- **`model.lua`** — the §11.2 types plus a **Go-compatible JSON encoder**: Go
+  struct field order, two-space indent, Go's HTML escaping. A file this plugin
+  writes is byte-identical to one the CLI writes, so alternating writers produce
+  no spurious diffs. **`store.lua`** — root/branch resolution and atomic writes.
+  **`git.lua`** — `.git/HEAD` and `user.name`, read straight off disk.
+- **`service.lua`** — the model and every mutation, with merge-on-write, the
+  `locally_deleted` guard, self-write suppression (it remembers the bytes it
+  wrote), quiet position writes and branch switching. One service per discovered
+  root: Neovim has no "project", so a single instance can hold buffers from
+  several checkouts.
+- **`track.lua`** — the `RangeMarker` equivalent: one extmark per thread with
+  `invalidate = true`, a debounced (400ms) pass that reads the marks back and
+  persists positions, and an invalid mark omitted from the map so the service
+  falls back to a text re-anchor exactly as the IDE does with a dead marker.
+- **`ui/render.lua`** — sign-column icon on the thread's first line, a thin band
+  down the rest of its range, and the thread card as `virt_lines` above the
+  code. **`ui/bubble.lua`** — one message as a bordered, fixed-width box, shared
+  by the inline card and the explorer so a reply looks the same in both.
+  **`ui/composer.lua`** — a real buffer in a float (so every editing key works,
+  the same reason the IDE needs `EditorTextField`). **`ui/explorer.lua`** — the
+  two-pane explorer: search, the three state filters, the thread list, and a
+  detail pane with the anchored code (treesitter-highlighted) above the rendered
+  conversation. Hand-built floats, no picker dependency.
+  **`ui/highlights.lua`** — every colour, derived by mixing the colourscheme's
+  own groups: bubble fills, borders, dimmed body text, calmed state words.
+- Bubble width is the one setting with a runtime command (`:IncommWidth`, with
+  `!` to persist it under `stdpath("state")`); everything else lives in the
+  user's own config.
+- **`watch.lua`** — libuv watches on `.incomm/` and `.git/HEAD`, plus a
+  `FocusGained` re-sync; it watches the project root until `.incomm/` first
+  appears, since the first writer may be the agent. **`actions.lua`** — one
+  function per IDE action, exposed as `:Incomm <subcommand>` in `plugin/`.
+
+No default keymaps, matching the IDE. Tests: `nvim --headless -l tests/run.lua`.
+
 ---
 
 ## 7. Key insights & gotchas (save yourself hours)
@@ -345,9 +400,9 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
    Colours are user-overridable in *Settings | Tools | Incomm* (`settings/IncommSettings`); read
    them through `IncommColors` (which resolves override-or-theme) — never hard-code a colour. No
    default shortcuts.
-10. **Schema parity is sacred.** Any change to the JSON shape or anchoring must land in *both*
-    `Anchoring.kt`/`model` **and** `internal/anchor`/`model`, keep §11 in sync, and pass
-    the shared `fixtures/`.
+10. **Schema parity is sacred.** Any change to the JSON shape or anchoring must land in *all
+    three* implementations — `Anchoring.kt`/`model`, `internal/anchor`/`model` and
+    `lua/incomm/anchor.lua`/`model.lua` — keep §11 in sync, and pass the shared `fixtures/`.
 
 ---
 
@@ -360,6 +415,14 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
   `JAVA_HOME=$(/usr/libexec/java_home -v 21) ./gradlew :plugin:test`.
 - **CLI** (`cli/**/*_test.go`): `anchor`, `model`, `store`, and `cmd` (`skill`, `anchor set/recompute`).
   Run: `go test ./...`.
+- **Neovim** (`plugins/nvim/tests/`, dependency-free runner): `anchor_spec` (the shared
+  fixtures, plus checksums golden-tested against the Go implementation), `store_spec`
+  (branch scoping, atomic writes, and **byte-identity with the CLI's output**),
+  `service_spec` (merge-on-write, the delete guard, orphaning/healing, branch switch),
+  `editor_spec` (extmark tracking, cards, signs, hide/show, the line-1 float) and
+  `interactive_spec` (the composer, `:Incomm`, the watcher, live CLI interop).
+  Run: `cd plugins/nvim && nvim --headless -l tests/run.lua`. The CLI-dependent tests
+  are skipped when `incomm` is not on `$PATH`.
 - `verifyPlugin` must stay **Compatible** across IC 242–252 with no internal/deprecated-API
   warnings.
 
@@ -369,7 +432,7 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
 
 | I want to… | Touch |
 |------------|-------|
-| Change the JSON shape or anchoring | §11 + `anchor/Anchoring.kt` + `cli/internal/anchor` + `model` on both sides + `fixtures/` |
+| Change the JSON shape or anchoring | §11 + `anchor/Anchoring.kt` + `cli/internal/anchor` + `plugins/nvim/lua/incomm/anchor.lua` + `model` on all three sides + `fixtures/` |
 | Add a CLI command | new file in `cli/cmd/` (register via `rootCmd.AddCommand` in `init()`), mirror `--json` |
 | Add a plugin action | new class in `actions/` + register in `plugin.xml` + text in `IncommBundle.properties` |
 | Change the inline card UI | `ui/NoteCardComponent.kt` (+ `ui/ThreadUi.kt` for shared bits) |
@@ -378,7 +441,8 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
 | Change any colour | `ui/IncommColors.kt` only (theme-derived; never hard-code elsewhere) |
 | Change user-facing colours / date format | `settings/IncommSettings.kt` + `settings/IncommConfigurable.kt` |
 | Change data/persistence | `store/NotesService.kt`, `store/NotesStore.kt` |
-| Change branch detection | `store/BranchDetector.kt` (plugin), `cli/internal/git/` (CLI) |
+| Change branch detection | `store/BranchDetector.kt` (IntelliJ), `cli/internal/git/` (CLI), `plugins/nvim/lua/incomm/git.lua` (Neovim) |
+| Change anything in the Neovim plugin | `plugins/nvim/lua/incomm/` — see §6.6 for the module map |
 | Change what the agent skill says | `cli/cmd/skill.go` (`skillMarkdown` const) |
 
 ---
@@ -389,8 +453,8 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
 - Notes are scoped to the current git branch: each branch gets its own file
   (`notes_main.json`, `notes_feature_x.json`, etc.). When no git repo is present,
   the legacy `notes.json` is used.
-- The plugin and CLI can both write concurrently; writes are atomic and the plugin merges on
-  write (never clobbering the agent's added notes), reconciled by the plugin's file watcher.
+- The plugins and CLI can all write concurrently; writes are atomic and the plugins merge on
+  write (never clobbering the agent's added notes), reconciled by their file watchers.
 
 ---
 
@@ -559,9 +623,9 @@ match survived). On accept:
 If no candidate is accepted: leave `startLine`/`endLine` unchanged and set
 `orphaned = true`. How orphaned notes surface:
 
-- **Plugin gutter/editor:** an orphaned-but-**unresolved** note floats to **line 1**
+- **Editor gutter:** an orphaned-but-**unresolved** note floats to **line 1**
   (its real anchor is lost) with the orphaned (red) icon; an orphaned-**and-resolved**
-  note is hidden from the editor entirely.
+  note is hidden from the editor entirely. Both editor plugins do this.
 - **Plugin explorer:** orphaned rows are tinted red and labelled `orphaned` (both
   states shown side by side if also resolved). The **Include orphaned** filter (⌘O)
   is on by default; **Include resolved** (⌘R) is off by default.
@@ -577,10 +641,11 @@ incomm anchor set <id> --start-prefix "…" # or overwrite individual anchor fie
 incomm anchor recompute --file src/x.go   # refresh anchor text at current lines
 ```
 
-### 11.5 Live tracking & reindexing (plugin)
+### 11.5 Live tracking & reindexing (editor plugins)
 
-While a file is open in the editor, each note is backed by a `RangeMarker`, so
-edits shift it automatically and the rendered blocks stay on the right line.
+While a file is open in the editor, each note is backed by a live range marker
+(a `RangeMarker` in IntelliJ, an extmark in Neovim), so edits shift it
+automatically and the rendered blocks stay on the right line.
 On top of that, a **debounced document listener reindexes positions live** —
 after you add/remove lines or edit the anchored text, the plugin recomputes each
 note's `startLine`/`endLine`, refreshes its `anchor`, and persists to
@@ -591,8 +656,9 @@ un-orphans, or a marker died and had to be text-reanchored).
 
 If a marker is invalidated (its whole range was deleted), the plugin falls back
 to the text re-anchor above and marks the note `orphaned` if that also fails.
-Source files edited **outside** the IDE (e.g. by the agent via the CLI) and not
-open in an editor are reanchored from disk by `IncommSourceFileWatcher`.
+Source files edited **outside** the editor (e.g. by the agent via the CLI) and not
+open in a buffer are reanchored from disk: by `IncommSourceFileWatcher` in
+IntelliJ, and on `FocusGained` (or `:Incomm reanchor`) in Neovim.
 
 ### 11.6 Concurrency
 

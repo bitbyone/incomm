@@ -189,6 +189,18 @@ local function render_list(self)
     highlights = { { row = 1, col = 0, end_col = 20, hl = "IncommMuted" } }
   end
 
+  -- Every row is padded out to the pane, so a selected one is a block to the
+  -- window's edge instead of a highlight that stops with its text. `hl_eol`
+  -- only extends a range that covers the line's own EOL, which is fiddlier
+  -- than giving the row the cells it should have had; the padding is added
+  -- after the highlight ranges are measured, so none of them reach into it.
+  for i, line in ipairs(lines) do
+    local pad = self.geom.list_w - vim.fn.strdisplaywidth(line)
+    if pad > 0 then
+      lines[i] = line .. string.rep(" ", pad)
+    end
+  end
+
   vim.bo[self.bufs.list].modifiable = true
   vim.api.nvim_buf_set_lines(self.bufs.list, 0, -1, false, lines)
   vim.bo[self.bufs.list].modifiable = false
@@ -208,7 +220,7 @@ local function render_list(self)
         end_row = row + offset,
         end_col = #(lines[row + offset + 1] or ""),
         hl_group = "IncommSelection",
-        hl_eol = true, -- on past the text, so the row is a block and not a ragged edge
+        hl_eol = true, -- and on past it, should a row ever outrun the padding
         priority = 20,
       })
     end

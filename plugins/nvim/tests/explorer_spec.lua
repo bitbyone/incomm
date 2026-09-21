@@ -163,6 +163,12 @@ T.test("selecting a row does not repaint its bar", function()
     end
     T.eq(selected, 2, "both lines of the selected row")
 
+    -- And it reaches the pane's edge: the rows are padded, so the selection is
+    -- a block rather than a highlight that stops with the text.
+    for _, line in ipairs(vim.api.nvim_buf_get_lines(self.bufs.list, 0, -1, false)) do
+      T.ok(vim.fn.strdisplaywidth(line) >= self.geom.list_w, "row padded to the pane: " .. vim.inspect(line))
+    end
+
     explorer.filters = { open = true, resolved = false, orphaned = true }
     close()
   end)

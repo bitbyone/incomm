@@ -205,6 +205,7 @@ resolve to:
 | `IncommStateOpen` / `IncommStateResolved` / `IncommStateOrphaned` | `DiagnosticInfo` / `DiagnosticOk` / `DiagnosticError` | a thread's state |
 | `IncommContent` | `Normal` | comment text |
 | `IncommMuted` | `Comment` | timestamps, locations |
+| `IncommSelection` / `IncommPreviewLine` | `Visual` / `CursorLine` | the explorer's selected row, and the anchored lines in its code preview |
 
 From those it derives the bubble borders, the dimmed body text, the calmed
 state words and gutter signs: `IncommBorder{User,Agent}`, `IncommName*`,

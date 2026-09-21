@@ -35,6 +35,11 @@ local links = {
   IncommExplorerBorder = "FloatBorder",
   IncommExplorerTitle = "FloatTitle",
   IncommSelection = "Visual", -- the highlighted row in the thread list
+  -- The anchored lines in the explorer's code preview. `CursorLine` is the
+  -- band the editor itself puts behind the line you are on, which is what the
+  -- preview is showing: mixing a colour of our own here made the code read as
+  -- a selection rather than as code.
+  IncommPreviewLine = "CursorLine",
   IncommDetailPath = "Title", -- where a thread lives, above its code
   IncommHelpKey = "Special",
 }
@@ -88,7 +93,6 @@ local function derive()
     -- still legible, just not tuned to the theme.
     vim.api.nvim_set_hl(0, "IncommCard", { link = "Normal" })
     vim.api.nvim_set_hl(0, "IncommCardLine", { link = "IncommMuted" })
-    vim.api.nvim_set_hl(0, "IncommPreviewLine", { link = "CursorLine" })
     for _, author in ipairs({ "User", "Agent" }) do
       vim.api.nvim_set_hl(0, "IncommBorder" .. author, { link = "Incomm" .. author })
       vim.api.nvim_set_hl(0, "IncommName" .. author, { link = "Incomm" .. author })
@@ -122,11 +126,6 @@ local function derive()
   local card_bg = blend(text, surface, 0.05)
   vim.api.nvim_set_hl(0, "IncommCard", { bg = card_bg })
   vim.api.nvim_set_hl(0, "IncommCardLine", { fg = blend(muted, surface, keep), bg = card_bg, italic = muted_italic })
-
-  -- The anchored lines inside the explorer's code preview, mixed off the
-  -- float's own background so it works there too.
-  local float_bg = color_of("IncommExplorer", "bg") or surface
-  vim.api.nvim_set_hl(0, "IncommPreviewLine", { bg = blend(states.Open, float_bg, 0.16) })
 
   for state, accent in pairs(states) do
     -- The state word keeps its own hue so open and resolved stay tellable

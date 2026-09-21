@@ -168,6 +168,27 @@ T.test("selecting a row does not repaint its bar", function()
   end)
 end)
 
+T.test("the cursor is hidden in the list and restored on the way out", function()
+  T.with_tmpdir(function(dir)
+    local svc = fixture(dir)
+    local before = vim.o.guicursor
+    explorer.open(svc)
+    -- The block cursor parks on the selected row's first column, which is the
+    -- bar: a whole inverted cell over the one mark in the list that means
+    -- something. There is nothing to type in the list, so it goes away.
+    T.eq(vim.o.guicursor, "a:IncommHiddenCursor", "hidden while the list has focus")
+
+    local self = explorer.current()
+    vim.api.nvim_set_current_win(self.wins.search)
+    T.eq(vim.o.guicursor, before, "back in the search box, where you type")
+
+    vim.api.nvim_set_current_win(self.wins.list)
+    T.eq(vim.o.guicursor, "a:IncommHiddenCursor", "and hidden again on the way back")
+    close()
+    T.eq(vim.o.guicursor, before, "closing the explorer restores it")
+  end)
+end)
+
 T.test("the editor behind the explorer is shaded, and the shade goes with it", function()
   T.with_tmpdir(function(dir)
     local svc = fixture(dir)

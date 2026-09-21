@@ -432,6 +432,9 @@ function M.close(self)
     return
   end
   self.closed = true
+  if self.show_cursor then
+    self.show_cursor()
+  end
   if self.unsubscribe then
     self.unsubscribe()
   end
@@ -587,6 +590,29 @@ function M.open(svc, rel)
     vim.cmd.startinsert({ bang = true })
   end
 
+  -- ---- the cursor ---------------------------------------------------------
+  --
+  -- Focus sits in the list, where there is nothing to type, and the block
+  -- cursor parks on the selected row's first column -- a whole inverted cell
+  -- over the bar, twice its width and in the cursor's own colour, which is
+  -- what made a selected thread's state unreadable. The selection already says
+  -- which row it is, so the cursor is hidden while the list has focus and
+  -- comes straight back in the search box, where it is what you type against.
+  local saved_guicursor
+  local function hide_cursor()
+    if not saved_guicursor then
+      saved_guicursor = vim.o.guicursor
+      vim.o.guicursor = "a:IncommHiddenCursor"
+    end
+  end
+  local function show_cursor()
+    if saved_guicursor then
+      vim.o.guicursor = saved_guicursor
+      saved_guicursor = nil
+    end
+  end
+  self.show_cursor = show_cursor
+
   -- ---- keys ---------------------------------------------------------------
 
   local function map(buf, lhs, fn, mode)
@@ -698,6 +724,9 @@ function M.open(svc, rel)
       refresh(self)
     end,
   })
+  vim.api.nvim_create_autocmd("BufEnter", { group = group, buffer = self.bufs.list, callback = hide_cursor })
+  vim.api.nvim_create_autocmd("BufLeave", { group = group, buffer = self.bufs.list, callback = show_cursor })
+
   -- Closing one window closes the whole thing, so no float is ever orphaned.
   for _, win in pairs(self.wins) do
     vim.api.nvim_create_autocmd("WinClosed", {
@@ -721,6 +750,7 @@ function M.open(svc, rel)
 
   refresh(self)
   vim.api.nvim_set_current_win(self.wins.list)
+  hide_cursor()
 end
 
 --- The key list, on `?`.

@@ -287,7 +287,10 @@ it covers.
 
 In the list each thread is two lines with a coloured bar down both of them, and
 the bar is the thread's **state** — blue open, green resolved, red orphaned —
-the same reading as the gutter sign and the filter row above it.
+the same reading as the gutter sign and the filter row above it. The selection
+starts after the bar and the block cursor is hidden while the list has focus
+(`IncommHiddenCursor`, restored in the search box and on close), so a selected
+thread's state reads exactly like an unselected one's.
 
 | Key | |
 |---|---|

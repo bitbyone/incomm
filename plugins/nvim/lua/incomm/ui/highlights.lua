@@ -162,6 +162,10 @@ function M.setup()
   -- colourscheme defines "the colour to dim everything with", and it is only
   -- ever seen through a `winblend`: plain black, or white on a light
   -- background, which is what every picker's backdrop is.
+  -- What the cursor becomes while the explorer's list has focus: nothing at
+  -- all. `blend = 100` is transparency, not a colour, so it works over
+  -- whatever the cell under it happens to be.
+  vim.api.nvim_set_hl(0, "IncommHiddenCursor", { blend = 100, nocombine = true, default = true })
   vim.api.nvim_set_hl(0, "IncommBackdrop", {
     bg = vim.o.background == "light" and "#ffffff" or "#000000",
     default = true,

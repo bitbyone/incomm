@@ -142,6 +142,32 @@ T.test("the bar down a row is the thread's state, on both of its lines", functio
   end)
 end)
 
+T.test("selecting a row does not repaint its bar", function()
+  T.with_tmpdir(function(dir)
+    local svc = fixture(dir)
+    explorer.filters = { open = true, resolved = true, orphaned = true }
+    explorer.open(svc)
+
+    local self = explorer.current()
+    local bar = #require("incomm.config").options.explorer.icon
+    local marks = vim.api.nvim_buf_get_extmarks(self.bufs.list, explorer.ns, 0, -1, { details = true })
+    local selected = 0
+    for _, m in ipairs(marks) do
+      if m[4].hl_group == "IncommSelection" or m[4].line_hl_group == "IncommSelection" then
+        selected = selected + 1
+        -- The bar is the only colour in the list that carries meaning, so the
+        -- selection starts after it: a selected thread's state reads exactly
+        -- like an unselected one's.
+        T.eq(m[3], bar, "the selection starts after the bar")
+      end
+    end
+    T.eq(selected, 2, "both lines of the selected row")
+
+    explorer.filters = { open = true, resolved = false, orphaned = true }
+    close()
+  end)
+end)
+
 T.test("the editor behind the explorer is shaded, and the shade goes with it", function()
   T.with_tmpdir(function(dir)
     local svc = fixture(dir)

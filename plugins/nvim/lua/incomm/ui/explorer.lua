@@ -195,12 +195,20 @@ local function render_list(self)
   vim.api.nvim_buf_clear_namespace(self.bufs.list, M.ns, 0, -1)
   bubble.apply(self.bufs.list, M.ns, highlights)
 
-  -- The selected row: both of its lines, so the block reads as one entry.
+  -- The selected row: both of its lines, so the block reads as one entry --
+  -- but starting *after* the bar, so the bar is the same glyph in the same
+  -- colour whether the row is selected or not. A `line_hl_group` covered it
+  -- too, which repainted the one thing in the list whose colour means
+  -- something.
   if #self.items > 0 then
     local row = (self.index - 1) * 2
+    local bar = #config.options.explorer.icon
     for offset = 0, 1 do
-      pcall(vim.api.nvim_buf_set_extmark, self.bufs.list, M.ns, row + offset, 0, {
-        line_hl_group = "IncommSelection",
+      pcall(vim.api.nvim_buf_set_extmark, self.bufs.list, M.ns, row + offset, bar, {
+        end_row = row + offset,
+        end_col = #(lines[row + offset + 1] or ""),
+        hl_group = "IncommSelection",
+        hl_eol = true, -- on past the text, so the row is a block and not a ragged edge
         priority = 20,
       })
     end

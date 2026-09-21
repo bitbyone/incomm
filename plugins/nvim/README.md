@@ -174,6 +174,7 @@ require("incomm").setup({
     height = 0.85,
     list_width = 0.34,     -- how much of it the thread list gets
     icon = "▌",
+    backdrop = 60,         -- % of IncommBackdrop over the editor; false for none
   },
   date_format = "relative", -- or "datetime" | "date" | "time" | a strftime string
   watch = true,             -- reload when the agent or a branch switch changes the file
@@ -225,7 +226,8 @@ require("incomm.ui.highlights").derive()
 
 That is worth doing when your theme's `DiagnosticInfo` and `DiagnosticOk` are
 the same family, which would otherwise make a comment and its reply look alike.
-`IncommAddHint` and `IncommComposer*` are plain groups you can override
+`IncommAddHint`, `IncommComposer*`, `IncommExplorer*` and `IncommBackdrop` —
+the shade the explorer lays over the editor — are plain groups you can override
 directly. A thread's extent is shown only in the sign column — the icon on its
 first line, a thin band down the rest — so nothing ever paints over the code.
 
@@ -279,7 +281,13 @@ forces it, and also re-derives the palette.
 and a detail pane showing the code a thread is anchored to followed by the
 conversation, each message in its own box — the shape the IntelliJ plugin's
 explorer has. No dependency: it is built from plain floats, and the code
-preview is syntax-highlighted with treesitter when a parser is installed.
+preview is syntax-highlighted with treesitter when a parser is installed. The
+editor behind it is shaded (`explorer.backdrop`), the way a picker shades what
+it covers.
+
+In the list each thread is two lines with a coloured bar down both of them, and
+the bar is the thread's **state** — blue open, green resolved, red orphaned —
+the same reading as the gutter sign and the filter row above it.
 
 | Key | |
 |---|---|

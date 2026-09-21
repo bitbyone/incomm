@@ -108,6 +108,12 @@ local defaults = {
     list_width = 0.34,
     --- Glyph in front of a thread in the list.
     icon = "▌",
+    --- Dim the editor behind the explorer while it is open, the way a picker
+    --- shades what it covers: the percentage of `IncommBackdrop` (black by
+    --- default) laid over everything else, or false for no backdrop. It is a
+    --- window of its own, so it needs `termguicolors` and costs nothing when
+    --- the explorer is closed.
+    backdrop = 60,
   },
 
   --- Timestamp rendering: "relative" (2h ago), "datetime", "date", "time", or

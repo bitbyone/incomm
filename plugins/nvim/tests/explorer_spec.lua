@@ -105,6 +105,64 @@ T.test("the explorer opens four panes and lists the threads", function()
   end)
 end)
 
+T.test("the bar down a row is the thread's state, on both of its lines", function()
+  T.with_tmpdir(function(dir)
+    local svc = fixture(dir)
+    explorer.filters = { open = true, resolved = true, orphaned = true }
+    explorer.open(svc)
+
+    -- Sorted by line: orphaned (L1), open (L4), resolved (L5).
+    local expected = { "IncommStateOrphaned", "IncommStateOpen", "IncommStateResolved" }
+    local self = explorer.current()
+    for i, group in ipairs(expected) do
+      local row = (i - 1) * 2
+      for offset = 0, 1 do
+        -- The bar is what tells one state from another at a glance, and a
+        -- thread is two lines high, so both of them carry it -- otherwise the
+        -- left border of an entry stops halfway down it.
+        local marks = vim.api.nvim_buf_get_extmarks(
+          self.bufs.list,
+          explorer.ns,
+          { row + offset, 0 },
+          { row + offset, 1 },
+          { details = true }
+        )
+        local found
+        for _, m in ipairs(marks) do
+          if m[3] == 0 and m[4].hl_group == group then
+            found = true
+          end
+        end
+        T.ok(found, group .. " on line " .. (row + offset + 1) .. " of the list")
+      end
+    end
+
+    explorer.filters = { open = true, resolved = false, orphaned = true }
+    close()
+  end)
+end)
+
+T.test("the editor behind the explorer is shaded, and the shade goes with it", function()
+  T.with_tmpdir(function(dir)
+    local svc = fixture(dir)
+    local saved = vim.o.termguicolors
+    vim.o.termguicolors = true -- no 24-bit colour, no blend, no backdrop
+    explorer.open(svc)
+
+    local self = explorer.current()
+    local backdrop = self.wins.backdrop
+    T.ok(backdrop and vim.api.nvim_win_is_valid(backdrop), "a backdrop window is open")
+    local cfg = vim.api.nvim_win_get_config(backdrop)
+    T.eq(cfg.width, vim.o.columns, "it covers the whole editor")
+    T.ok(cfg.zindex < 50, "and sits under the panes")
+    T.eq(vim.wo[backdrop].winblend, 60, "shading rather than hiding what is behind it")
+
+    close()
+    T.ok(not vim.api.nvim_win_is_valid(backdrop), "closing the explorer takes it away")
+    vim.o.termguicolors = saved
+  end)
+end)
+
 T.test("the detail pane shows the anchored code and then the conversation", function()
   T.with_tmpdir(function(dir)
     local svc = fixture(dir)

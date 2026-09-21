@@ -158,6 +158,14 @@ function M.setup()
     -- `default = true`: a colourscheme that defines its own IncommUser wins.
     vim.api.nvim_set_hl(0, group, { link = target, default = true })
   end
+  -- The shade the explorer lays over the editor. Not a link, because no
+  -- colourscheme defines "the colour to dim everything with", and it is only
+  -- ever seen through a `winblend`: plain black, or white on a light
+  -- background, which is what every picker's backdrop is.
+  vim.api.nvim_set_hl(0, "IncommBackdrop", {
+    bg = vim.o.background == "light" and "#ffffff" or "#000000",
+    default = true,
+  })
   local ok, err = pcall(derive)
   if not ok then
     vim.notify("incomm: could not derive the card palette: " .. tostring(err), vim.log.levels.WARN)

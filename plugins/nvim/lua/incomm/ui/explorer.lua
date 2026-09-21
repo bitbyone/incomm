@@ -162,17 +162,24 @@ local function render_list(self)
     local replies = #note.replies
     local meta = replies == 0 and "no replies" or (replies == 1 and "1 reply" or (replies .. " replies"))
     local where = vim.fn.fnamemodify(note.file, ":t") .. ":" .. note.startLine
-    lines[#lines + 1] = "  " .. meta .. "   " .. where .. (state ~= "open" and ("   " .. state) or "")
+    -- The glyph leads the second line too, so the two lines of an entry are
+    -- bordered as the one block they are.
+    lines[#lines + 1] = icon .. " " .. meta .. "   " .. where .. (state ~= "open" and ("   " .. state) or "")
 
-    highlights[#highlights + 1] = { row = row, col = 0, end_col = #icon, hl = hl.for_author(note.author) }
-    highlights[#highlights + 1] = { row = row + 1, col = 0, end_col = #lines[#lines], hl = "IncommMuted" }
+    -- The bar is the thread's state, not its author: blue open, green
+    -- resolved, red orphaned -- the same reading as the gutter sign and the
+    -- filter checkboxes above the list. Who wrote it is on the card in the
+    -- detail pane, where there is room to say so.
+    for offset = 0, 1 do
+      highlights[#highlights + 1] = { row = row + offset, col = 0, end_col = #icon, hl = hl.for_state(note) }
+    end
+    highlights[#highlights + 1] = { row = row + 1, col = #icon, end_col = #lines[#lines], hl = "IncommMuted" }
     if state ~= "open" then
-      local tag = "IncommState" .. state:sub(1, 1):upper() .. state:sub(2)
       highlights[#highlights + 1] = {
         row = row + 1,
         col = #lines[#lines] - #state,
         end_col = #lines[#lines],
-        hl = tag,
+        hl = hl.for_state(note),
       }
     end
   end
@@ -472,6 +479,27 @@ function M.open(svc, rel)
     vim.wo[win].winhighlight = "NormalFloat:IncommExplorer,FloatBorder:IncommExplorerBorder,FloatTitle:IncommExplorerTitle"
     vim.wo[win].wrap = false
     return win
+  end
+
+  -- The editor behind the explorer, shaded. A window of its own rather than a
+  -- `winblend` on the panes: blending the panes would show the code *through*
+  -- the threads, and what is wanted is the opposite -- the panes opaque, and
+  -- everything they do not cover pushed back.
+  if opts.backdrop and opts.backdrop > 0 and opts.backdrop < 100 and vim.o.termguicolors then
+    local buf = vim.api.nvim_create_buf(false, true)
+    scratch(buf)
+    self.wins.backdrop = vim.api.nvim_open_win(buf, false, {
+      relative = "editor",
+      row = 0,
+      col = 0,
+      width = vim.o.columns,
+      height = vim.o.lines,
+      focusable = false,
+      style = "minimal",
+      zindex = 40, -- under the panes' 50
+    })
+    vim.wo[self.wins.backdrop].winhighlight = "Normal:IncommBackdrop"
+    vim.wo[self.wins.backdrop].winblend = opts.backdrop
   end
 
   for _, name in ipairs({ "search", "filters", "list", "detail" }) do

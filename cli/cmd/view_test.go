@@ -286,14 +286,14 @@ func TestAddRefusesPrivateAndRecordsAudienceAndSource(t *testing.T) {
 		got.Source == nil || got.Source.ID != 7 || got.Source.Thread != "abc" || got.Source.URL != "https://f/x" {
 		t.Fatalf("stored = %+v", got)
 	}
-	// The default audience is left out of the file altogether.
+	// The default audience is written out, so the file says who sees the comment.
 	if _, err := runCLI(t, "--root", root, "add", "-f", filepath.Join(root, "main.go"), "-l", "1", "-c", "plain", "--audience", "agent"); err != nil {
 		t.Fatal(err)
 	}
 	nf, _ = st.Load()
 	for _, n := range nf.Notes {
-		if n.Content == "plain" && n.Audience != "" {
-			t.Errorf("default audience should be stored empty, got %q", n.Audience)
+		if n.Content == "plain" && n.Audience != model.AudienceAgent {
+			t.Errorf("default audience should be stored as agent, got %q", n.Audience)
 		}
 	}
 }

@@ -96,3 +96,22 @@ func TestAV2FileRoundTripsAudienceAndSource(t *testing.T) {
 		t.Error("private note or its reply changed")
 	}
 }
+
+func TestSavingWritesTheDefaultAudienceOut(t *testing.T) {
+	st, _ := openWith(t, "notes.sample.json") // v1: no audience anywhere
+	f, err := st.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Save(f); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(st.NotesPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if got := strings.Count(text, `"audience": "agent"`); got != 4 {
+		t.Errorf("want the default written on all 3 notes and the reply (4), got %d:\n%s", got, text)
+	}
+}

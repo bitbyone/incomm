@@ -38,9 +38,8 @@ func currentView() model.View {
 // noComment is the answer for an id that does not exist in the current view.
 func noComment(id string) error { return fmt.Errorf("no comment with id %q", id) }
 
-// audienceOf validates an --audience value. The default audience is stored as
-// the empty string, so a comment that never mentions it stays byte-for-byte what
-// it was before the field existed.
+// audienceOf validates an --audience value. The default is returned as the
+// empty string and filled in as "agent" when the file is saved.
 func audienceOf(v string) (string, error) {
 	if v == "" || v == model.AudienceAgent {
 		return "", nil

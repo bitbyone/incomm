@@ -154,7 +154,7 @@ any compatible editor/UI integration.
 |---------|---------|
 | `list [--file F] [--unresolved] [--json]` | List comments (re-anchors first). `--json` → `{ "notes": [Note,…] }`. |
 | `show <id> [--json]` | One comment + its full thread. |
-| `add -f FILE -l N\|N:M -c TEXT [--author user\|agent] [--author-title T] [--audience A] [--source-url U --source-id N --source-thread T]` | New comment on a line/range. `--author` defaults to `agent`. `--author-title` sets the display name (mandatory for `user`; optional for `agent`, e.g. model name). `--audience` is `agent` (default, stored as absent), `external` or `agent+external`; `private` is refused (made in the editor). |
+| `add -f FILE -l N\|N:M -c TEXT [--author user\|agent] [--author-title T] [--audience A] [--source-url U --source-id N --source-thread T]` | New comment on a line/range. `--author` defaults to `agent`. `--author-title` sets the display name (mandatory for `user`; optional for `agent`, e.g. model name). `--audience` is `agent` (default, written out as `"agent"`), `external` or `agent+external`; `private` is refused (made in the editor). |
 | `reply <id> -c TEXT [--author …] [--author-title T] [--audience A] [--source-url U --source-id N]` | Reply to a thread. Defaults to `agent`. |
 | `resolve <id>` / `unresolve <id>` | Mark done / reopen. |
 | `rm <id>` | Delete one comment. Refused when it has replies the view cannot see. |
@@ -607,8 +607,8 @@ The project root is:
   There is no "compatible addition": the readers are typed and would drop a field they do not
   know on the next write.
 - `audience` is one of `private`, `agent`, `external`, `agent+external`, on a comment and on
-  each reply. Absent or empty means `agent`; a writer leaves it out for the default, and an
-  explicit `"agent"` read from a file round-trips unchanged. A value a reader does not know
+  each reply. A writer always writes it, the default as `"agent"`, so a file says who sees each
+  comment; a reader takes an absent or empty value in a file it reads as `agent` (older files). A value a reader does not know
   MUST be treated as `private` (never shown to an agent). The audience of a thread is its
   root's; a reply under a `private` root is effectively `private` whatever it stores.
 - `source` is optional metadata (`url`, `id`, `thread`, each omitted when empty). `thread` is

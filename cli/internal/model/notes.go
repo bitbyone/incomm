@@ -155,9 +155,21 @@ func (f *NotesFile) Normalize() {
 	if f.Notes == nil {
 		f.Notes = []Note{}
 	}
+	// The default audience is written out rather than left implied, so a file
+	// says who sees each comment. An absent value in a file that is read still
+	// means the same thing; only saving fills it in.
 	for i := range f.Notes {
-		if f.Notes[i].Replies == nil {
-			f.Notes[i].Replies = []Reply{}
+		n := &f.Notes[i]
+		if n.Replies == nil {
+			n.Replies = []Reply{}
+		}
+		if n.Audience == "" {
+			n.Audience = AudienceAgent
+		}
+		for j := range n.Replies {
+			if n.Replies[j].Audience == "" {
+				n.Replies[j].Audience = AudienceAgent
+			}
 		}
 	}
 }

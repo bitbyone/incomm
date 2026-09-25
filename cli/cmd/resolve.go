@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"incomm/internal/model"
 
 	"github.com/spf13/cobra"
@@ -17,9 +15,9 @@ func setResolved(id string, resolved bool) error {
 	if err != nil {
 		return err
 	}
-	note := nf.Find(id)
+	note := nf.FindVisible(id, currentView())
 	if note == nil {
-		return fmt.Errorf("no comment with id %q", id)
+		return noComment(id)
 	}
 	note.Resolved = resolved
 	note.UpdatedAt = model.NowUTC()
@@ -27,7 +25,8 @@ func setResolved(id string, resolved bool) error {
 		return err
 	}
 	if flagJSON {
-		return emitJSON(note)
+		shown, _ := note.InView(currentView())
+		return emitJSON(shown)
 	}
 	if resolved {
 		out("Resolved %s", id)

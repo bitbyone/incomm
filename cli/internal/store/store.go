@@ -20,6 +20,20 @@ const DirName = ".incomm"
 // is detected or the repo is in detached-HEAD state).
 const FileName = "notes.json"
 
+// IncompatibleError means the notes file was written in a newer format than this
+// build understands. Nothing may be read from it or written over it: an older
+// build would silently drop what it does not know.
+type IncompatibleError struct {
+	Path      string
+	Found     int
+	Supported int
+}
+
+func (e *IncompatibleError) Error() string {
+	return fmt.Sprintf("%s is format v%d, this incomm understands up to v%d - update incomm",
+		filepath.Join(DirName, filepath.Base(e.Path)), e.Found, e.Supported)
+}
+
 // Store is bound to a resolved project root and an optional git branch.
 type Store struct {
 	Root      string // absolute path of the directory that holds (or will hold) .incomm/
@@ -107,6 +121,14 @@ func (s *Store) Load() (*model.NotesFile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", s.NotesPath(), err)
 	}
+	// Look at the version alone first: a newer format may have a shape this
+	// build cannot decode at all, and that is still a version problem.
+	var head struct {
+		Version int `json:"version"`
+	}
+	if json.Unmarshal(data, &head) == nil && head.Version > model.SchemaVersion {
+		return nil, &IncompatibleError{Path: s.NotesPath(), Found: head.Version, Supported: model.SchemaVersion}
+	}
 	var f model.NotesFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", s.NotesPath(), err)
@@ -116,12 +138,14 @@ func (s *Store) Load() (*model.NotesFile, error) {
 }
 
 // Save writes the branch-scoped notes file atomically (temp file + rename) with
-// 2-space indent. The raw branch name is stamped into the JSON.
+// 2-space indent. The raw branch name and the current format version are
+// stamped into the JSON.
 func (s *Store) Save(f *model.NotesFile) error {
 	if s.RawBranch != "" {
 		f.Branch = s.RawBranch
 	}
 	f.Normalize()
+	f.Version = model.SchemaVersion
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode notes: %w", err)

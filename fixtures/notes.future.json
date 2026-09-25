@@ -1,0 +1,13 @@
+{
+  "version": 99,
+  "notes": {
+    "shape": "a future format may change the type of notes entirely",
+    "threads": [
+      {
+        "id": "f0000001",
+        "location": { "path": "src/app/main.go", "range": [12, 12] },
+        "messages": [{ "from": "user", "text": "not readable by this version" }]
+      }
+    ]
+  }
+}

@@ -36,8 +36,13 @@ re-anchored against the current file contents before listing.`,
 			return err
 		}
 
+		view := currentView()
 		notes := make([]model.Note, 0, len(nf.Notes))
-		for _, n := range nf.Notes {
+		for _, full := range nf.Notes {
+			n, visible := full.InView(view)
+			if !visible {
+				continue
+			}
 			if listFile != "" {
 				rel, rerr := st.RelFile(listFile)
 				if rerr != nil {

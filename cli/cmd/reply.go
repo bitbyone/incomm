@@ -13,6 +13,9 @@ var (
 	replyContent     string
 	replyAuthor      string
 	replyAuthorTitle string
+	replyAudience    string
+	replySourceURL   string
+	replySourceID    int64
 )
 
 var replyCmd = &cobra.Command{
@@ -25,6 +28,10 @@ var replyCmd = &cobra.Command{
 		}
 		if replyAuthor != model.AuthorUser && replyAuthor != model.AuthorAgent {
 			return fmt.Errorf("--author must be %q or %q", model.AuthorUser, model.AuthorAgent)
+		}
+		audience, err := audienceOf(replyAudience)
+		if err != nil {
+			return err
 		}
 		authorTitle := replyAuthorTitle
 		if replyAuthor == model.AuthorUser && authorTitle == "" {
@@ -43,15 +50,17 @@ var replyCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		note := nf.Find(id)
+		note := nf.FindVisible(id, currentView())
 		if note == nil {
-			return fmt.Errorf("no comment with id %q", id)
+			return noComment(id)
 		}
 		now := model.NowUTC()
 		reply := model.Reply{
 			ID:          model.NewID(),
 			Author:      replyAuthor,
 			AuthorTitle: authorTitle,
+			Audience:    audience,
+			Source:      sourceOf(replySourceURL, replySourceID, ""),
 			Content:     replyContent,
 			CreatedAt:   now,
 		}
@@ -62,7 +71,8 @@ var replyCmd = &cobra.Command{
 		}
 
 		if flagJSON {
-			return emitJSON(note)
+			shown, _ := note.InView(currentView())
+			return emitJSON(shown)
 		}
 		out("Replied to %s", id)
 		return nil
@@ -73,5 +83,8 @@ func init() {
 	replyCmd.Flags().StringVarP(&replyContent, "content", "c", "", "reply text (required)")
 	replyCmd.Flags().StringVar(&replyAuthor, "author", model.AuthorAgent, "author: user or agent")
 	replyCmd.Flags().StringVar(&replyAuthorTitle, "author-title", "", "display name (e.g. model name for agent)")
+	replyCmd.Flags().StringVar(&replyAudience, "audience", "", "who may see it: agent (default), external or agent+external")
+	replyCmd.Flags().StringVar(&replySourceURL, "source-url", "", "where the reply came from (metadata)")
+	replyCmd.Flags().Int64Var(&replySourceID, "source-id", 0, "the reply's id on the forge (metadata)")
 	rootCmd.AddCommand(replyCmd)
 }

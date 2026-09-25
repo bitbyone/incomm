@@ -4,17 +4,20 @@ import (
 	"fmt"
 	"os"
 
+	"incomm/internal/model"
+
 	"github.com/spf13/cobra"
 )
 
 // version is overridable at build time with -ldflags "-X incomm/cmd.version=...".
-var version = "1.0.0"
+var version = "1.1.0"
 
 // Global flags shared by all subcommands.
 var (
 	flagRoot   string // explicit project root; defaults to CWD (walks up to find .incomm/)
 	flagBranch string // explicit git branch; defaults to auto-detect from .git/HEAD
 	flagJSON   bool   // machine-readable output for agents
+	flagView   string // whose eyes to look through: agent (default) or external
 )
 
 var rootCmd = &cobra.Command{
@@ -23,6 +26,10 @@ var rootCmd = &cobra.Command{
 	Version:       version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		_, err := model.ParseView(flagView)
+		return err
+	},
 	Long: `incomm is an IDE-agnostic CLI for branch-scoped, line-anchored context
 threads shared between humans, AI agents, scripts and compatible editor/UI
 integrations.
@@ -51,4 +58,6 @@ func init() {
 		"git branch name for notes scoping (defaults to auto-detect from .git/HEAD)")
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false,
 		"emit machine-readable JSON output")
+	rootCmd.PersistentFlags().StringVar(&flagView, "view", string(model.ViewAgent),
+		"whose comments to work with: agent (default) or external")
 }

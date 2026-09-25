@@ -1,0 +1,135 @@
+{
+  "version": 2,
+  "notes": [
+    {
+      "id": "a1000001",
+      "file": "src/app/main.go",
+      "startLine": 12,
+      "endLine": 12,
+      "anchor": {
+        "startPrefix": "func doThing(ctx context.Context)",
+        "endPrefix": "func doThing(ctx context.Context)",
+        "contextBefore": "// entrypoint",
+        "contextAfter": "return nil",
+        "checksum": "sha1:0000000000000000000000000000000000000000"
+      },
+      "content": "Agent-only note: audience is absent, which means agent.",
+      "resolved": false,
+      "orphaned": false,
+      "author": "user",
+      "authorTitle": "Jan Tobola",
+      "createdAt": "2026-07-17T10:00:00Z",
+      "updatedAt": "2026-07-17T10:05:00Z",
+      "replies": [
+        {
+          "id": "b1000001",
+          "author": "agent",
+          "authorTitle": "Opus 5",
+          "audience": "external",
+          "content": "A reply the human marked for publishing; no source yet, so it is pending.",
+          "createdAt": "2026-07-17T10:05:00Z"
+        }
+      ]
+    },
+    {
+      "id": "a1000002",
+      "file": "src/app/main.go",
+      "startLine": 30,
+      "endLine": 34,
+      "anchor": {
+        "startPrefix": "func Sum(values []int) int {",
+        "endPrefix": "}",
+        "contextBefore": "",
+        "contextAfter": "",
+        "checksum": "sha1:1111111111111111111111111111111111111111"
+      },
+      "content": "Imported from the merge request.\n\nSource: https://gitlab.example/group/app/-/merge_requests/7 (comment 501)",
+      "resolved": false,
+      "orphaned": false,
+      "author": "user",
+      "authorTitle": "Reviewer & Co <r@example.com>",
+      "audience": "agent+external",
+      "source": {
+        "url": "https://gitlab.example/group/app/-/merge_requests/7#note_501&x=1",
+        "id": 501,
+        "thread": "9f8e7d6c5b4a"
+      },
+      "createdAt": "2026-07-16T09:00:00Z",
+      "updatedAt": "2026-07-16T12:30:00Z",
+      "replies": [
+        {
+          "id": "b1000002",
+          "author": "user",
+          "authorTitle": "Jan Tobola",
+          "audience": "agent+external",
+          "source": {
+            "url": "https://gitlab.example/group/app/-/merge_requests/7#note_502",
+            "id": 502
+          },
+          "content": "A published reply.",
+          "createdAt": "2026-07-16T12:00:00Z"
+        },
+        {
+          "id": "b1000003",
+          "author": "user",
+          "authorTitle": "Jan Tobola",
+          "audience": "private",
+          "content": "Only for me: check this again before merging.",
+          "createdAt": "2026-07-16T12:30:00Z"
+        }
+      ]
+    },
+    {
+      "id": "a1000003",
+      "file": "README.md",
+      "startLine": 1,
+      "endLine": 1,
+      "anchor": {
+        "startPrefix": "# Old Project Title",
+        "endPrefix": "# Old Project Title",
+        "contextBefore": "",
+        "contextAfter": "",
+        "checksum": "sha1:2222222222222222222222222222222222222222"
+      },
+      "content": "Private note: the CLI never shows this, in any view.",
+      "resolved": false,
+      "orphaned": false,
+      "author": "user",
+      "authorTitle": "Jan Tobola",
+      "audience": "private",
+      "createdAt": "2026-07-15T08:00:00Z",
+      "updatedAt": "2026-07-15T08:00:00Z",
+      "replies": [
+        {
+          "id": "b1000004",
+          "author": "agent",
+          "audience": "agent",
+          "content": "Stored as agent, but the root is private so it is effectively private.",
+          "createdAt": "2026-07-15T08:10:00Z"
+        }
+      ]
+    },
+    {
+      "id": "a1000004",
+      "file": "src/app/util.go",
+      "startLine": 5,
+      "endLine": 5,
+      "anchor": {
+        "startPrefix": "func helper() {",
+        "endPrefix": "func helper() {",
+        "contextBefore": "",
+        "contextAfter": "",
+        "checksum": "sha1:3333333333333333333333333333333333333333"
+      },
+      "content": "External only: goes to the forge, the agent never sees it.",
+      "resolved": false,
+      "orphaned": false,
+      "author": "user",
+      "authorTitle": "Jan Tobola",
+      "audience": "external",
+      "createdAt": "2026-07-14T08:00:00Z",
+      "updatedAt": "2026-07-14T08:00:00Z",
+      "replies": []
+    }
+  ]
+}

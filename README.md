@@ -39,6 +39,8 @@ The on-disk format and CLI are intentionally **editor/IDE agnostic**. This repos
 - **Robust Anchoring**: Comments stay attached to the right line even as files change (using best-effort text anchors, prefixes, context, and checksums). Both editor plugins update these positions live as you type.
 - **Concurrent-safe**: The file format is designed for atomic writes. The CLI and the IDE can safely write to the same file concurrently without clobbering each other.
 - **Cross-environment**: Agents (like Opus or GPT) can interact natively using the standalone CLI, completely decoupling them from whatever IDE you are using.
+- **Who sees what**: every comment has an audience -- private (only you), agent, external (meant for the merge request) or both. The CLI shows an agent only what is addressed to it, so your own notes stay out of its context.
+- **Versioned format**: the file carries a format version. The CLI and both plugins refuse to read or overwrite a file written by a newer format and tell you to update, instead of silently dropping what they do not know. Upgrade the CLI and the plugins together.
 - **Agnostic & Lightweight**: No backend databases, no web services. Just a small JSON file committed or ignored in your repo.
 
 ---
@@ -108,6 +110,8 @@ keymaps. Requires Neovim 0.10+.
 The Go CLI is the workhorse for agents and automated workflows.
 
 *Currently preparing for Homebrew release.*
+
+`incomm version` prints the CLI version and the notes format it understands (`--json` for tools).
 
 **Manual Build:**
 1. Install Go.

@@ -45,6 +45,22 @@ The plugins and the CLI are **independent builds** that only agree on the shared
   author, comment-text and date/status colours), which also picks the **timestamp format**.
   Only `user`-authored comments are editable in place (agent comments can be
   deleted/replied-to but not edited by the human).
+- **Audience:** every comment and every reply has an `audience` saying who may see it:
+  `private` (its author, in the editor), `agent` (the agent working in the checkout; the
+  default, and what an absent field means), `external` (meant for the merge request on
+  the forge, not shown to the agent) or `agent+external`. It is set per comment, not per
+  thread: a thread is as visible as its root, and everything under a `private` root is
+  private. The **CLI shows an agent only what is addressed to it** (`--view agent`, the
+  default); `private` is in no CLI view. Editor plugins read the JSON directly and show
+  everything. This hides comments from a cooperating agent, it is not access control: the
+  file is readable by anyone with the checkout.
+- **Source:** an optional `source` (`url`, `id`, `thread`) records where a comment came
+  from or was published to on a forge. It is metadata for integrations (unagit imports
+  and publishes with it); an `external` comment without a `source` is still waiting to be
+  published.
+- **Format version:** the file's `version` is one integer, and any change to the JSON
+  shape bumps it. A component refuses to read or write a file whose version is newer than
+  it understands (§11.7) instead of rewriting it and dropping what it does not know.
 - **No default keyboard shortcuts.** Every plugin action is user-assignable via
   *Settings | Keymap* and discoverable in **Find Action** (⇧⌘A / Ctrl+Shift+A).
 
@@ -129,27 +145,35 @@ any compatible editor/UI integration.
 - `--root <dir>` — project root; default = CWD, walking **up** to find an existing `.incomm/`.
 - `--branch <name>` — git branch for notes scoping; default = auto-detect from `.git/HEAD`.
 - `--json` — machine-readable output. Agents should always pass this.
+- `--view agent|external` — whose comments to work with; default `agent`. A comment outside
+  the view does not exist as far as the command can tell: by id it is "no comment", in a
+  listing it is absent. `external` is for integrations that publish to a forge; `private`
+  is not a view.
 
 | Command | Purpose |
 |---------|---------|
 | `list [--file F] [--unresolved] [--json]` | List comments (re-anchors first). `--json` → `{ "notes": [Note,…] }`. |
 | `show <id> [--json]` | One comment + its full thread. |
-| `add -f FILE -l N\|N:M -c TEXT [--author user\|agent] [--author-title T]` | New comment on a line/range. `--author` defaults to `agent`. `--author-title` sets the display name (mandatory for `user`; optional for `agent`, e.g. model name). |
-| `reply <id> -c TEXT [--author …] [--author-title T]` | Reply to a thread. Defaults to `agent`. |
+| `add -f FILE -l N\|N:M -c TEXT [--author user\|agent] [--author-title T] [--audience A] [--source-url U --source-id N --source-thread T]` | New comment on a line/range. `--author` defaults to `agent`. `--author-title` sets the display name (mandatory for `user`; optional for `agent`, e.g. model name). `--audience` is `agent` (default, stored as absent), `external` or `agent+external`; `private` is refused (made in the editor). |
+| `reply <id> -c TEXT [--author …] [--author-title T] [--audience A] [--source-url U --source-id N]` | Reply to a thread. Defaults to `agent`. |
 | `resolve <id>` / `unresolve <id>` | Mark done / reopen. |
-| `rm <id>` | Delete one comment. |
-| `clear` | Delete ALL comments for the current branch. |
+| `rm <id>` | Delete one comment. Refused when it has replies the view cannot see. |
+| `clear` | Delete every comment **in the view** for the current branch; anything outside it, or with hidden replies, stays. The file goes when nothing is left. |
 | `reanchor [--file F]` | Recompute line positions from anchors (self-heal after edits). |
 | `anchor get <id> [--json]` | Print a comment's current position + anchor fields. |
 | `anchor set <id> [--line N\|N:M] [--start-prefix …] [--end-prefix …] [--context-before …] [--context-after …] [--checksum …] [--orphaned] [--no-recompute]` | Low-level: set a comment's final position and/or edit anchor fields. `--line` recomputes the anchor from the file and un-orphans (unless `--no-recompute`). |
 | `anchor recompute [--id X] [--file F]` | Regenerate anchor text from the file at each comment's current lines (no move); un-orphans on success. |
+| `set <id> [--reply RID] [--audience A] [--source-url U --source-id N --source-thread T]` | Change a comment's (or one reply's) audience, or record its `source` (e.g. after publishing). A value left out keeps what is stored. `private` is refused. |
+| `version [--json]` | CLI version and the notes format it understands: `{"version":"1.1.0","formatVersion":2}`. |
 | `skill path` | Write `~/.config/.incomm/SKILL.md`, print its absolute path (plain, nothing else). |
 
 **Internals** (`cli/internal/`):
 - `model/` — the JSON types (`NotesFile`, `Note`, `Anchor`, `Reply`), `NewID`, `NowUTC`. JSON
   tags MUST match §11 / the Kotlin model.
 - `store/` — locate root (`Open`), `Load`/`Save` (atomic), `Clear`, `RelFile`/`AbsFile`,
-  `ReadLines`, `SplitLines`. Branch-scoped filenames (`notes_<branch>.json`).
+  `ReadLines`, `SplitLines`. Branch-scoped filenames (`notes_<branch>.json`). `Load` peeks
+  the `version` first and returns `*IncompatibleError` for a newer format; `Save` stamps the
+  current version.
 - `anchor/` — `Compute`, `Reanchor`, the scoring algorithm from §11.
 - `git/` — pure-filesystem git branch detection (`DetectBranch`, `SanitizeBranch`)
   and user identity (`DetectUserName`). Reads `.git/HEAD` and git config directly;
@@ -278,6 +302,7 @@ Contextual (editor + gutter popup; enabled only when relevant; dynamic text wher
 | `incomm.EditComment` | Incomm: Edit | caret in a **user**-authored thread **with no replies** (unambiguous target) |
 | `incomm.ResolveThread` | Incomm: Resolve/Reopen Thread | caret in a thread (resolve also hides card) |
 | `incomm.ToggleThread` | Incomm: Show/Hide Thread | caret in a thread |
+| `incomm.CycleThreadAudience` | Incomm: Cycle Thread Audience | caret in a thread, plugin not blocked; steps the thread's **root** comment through the audience cycle |
 | `incomm.DeleteThread` | Incomm: Delete Thread | caret in a thread (no confirmation) |
 
 Tools-menu / global:
@@ -291,6 +316,20 @@ Tools-menu / global:
 | `incomm.ClearFile` | Incomm: Clear Threads in File | delete threads for the current file (confirm) |
 | `incomm.ClearAllThreads` | Incomm: Clear All Threads | delete everything (confirm) |
 | `incomm.Reload` | Incomm: Reload State | force-reload the notes model from disk and refresh all UI |
+
+**Audience in the UI.** Each bubble (root and every reply, user- or agent-authored) has an
+audience button in its hover toolbar, in the inline card and in the explorer's right pane.
+It steps that one comment through `agent → agent+external → external → private → agent`
+(absent = agent; an unknown stored value counts as private). The logic is pure and lives in
+`model/Audience.kt` (`next`, `effective`, `badge`), so it is unit-tested without an IDE. The
+badge sits in the bubble's existing author/time label so a bubble's height never changes: nothing for
+plain `agent`, otherwise `agent + external`, `external` or `private`, plus `not published`
+(no `source`) or `published` for anything that includes external. A reply under a `private` root
+shows `private` while its stored value is untouched. Changing it goes through
+`NotesService.setAudience(noteId, replyId?, audience)` (the normal mutate/persist path, refused
+while blocked), and the card refreshes through the existing `notesChanged` flow: `Note` is a data
+class, so `rebuildInlays` already sees the change. Nothing in `editor/` positions or resizes
+anything for this.
 
 Terminology: a **thread** is the whole envelope (`Note` in code); its original **comment**
 is what started it, followed by **replies**. Every action is prefixed `Incomm:`.
@@ -346,6 +385,13 @@ CLI -- it implements §11 directly. Module map (`lua/incomm/`):
   `FocusGained` re-sync; it watches the project root until `.incomm/` first
   appears, since the first writer may be the agent. **`actions.lua`** — one
   function per IDE action, exposed as `:Incomm <subcommand>` in `plugin/`.
+
+**Audience** (`ui/audience.lua`, `model.lua`, `service:set_audience` / `set_thread_audience`).
+The cursor row belongs to a thread, so `:Incomm audience` asks which comment (root, each reply, or
+"whole thread"; skipped for a single comment) and steps it through the same cycle as the IDE;
+`:Incomm audience <state>` names the target state directly. The explorer has the same flow on `a`.
+The badge is drawn in the bubble's header line (it shrinks to `+external`, then disappears, when the
+explorer is narrow), so card height and `virt_lines` layout are unchanged.
 
 No default keymaps, matching the IDE. Tests: `nvim --headless -l tests/run.lua`.
 
@@ -408,6 +454,14 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
 10. **Schema parity is sacred.** Any change to the JSON shape or anchoring must land in *all
     three* implementations — `Anchoring.kt`/`model`, `internal/anchor`/`model` and
     `lua/incomm/anchor.lua`/`model.lua` — keep §11 in sync, and pass the shared `fixtures/`.
+11. **The version gate is fail-closed.** Every reader checks `version` before decoding the
+    body (a newer shape may not decode at all) and refuses a file newer than it supports: the
+    CLI exits 1 with "`.incomm/notes_<branch>.json` is format vN, this incomm understands up
+    to vM - update incomm", the plugins stop reading, show one notification per file and
+    version, and never write until the file is compatible again. Without this an older
+    component would rewrite the file and drop the newer fields (and the plugins would overwrite
+    the file with an empty model after a failed load). Any change to the JSON shape bumps
+    `SCHEMA_VERSION` in all three implementations.
 
 ---
 
@@ -499,11 +553,11 @@ The project root is:
   `--root`/CWD. The branch is auto-detected from `.git/HEAD` and can be
   overridden with `--branch <name>`.
 
-### 11.2 JSON schema (`version: 1`)
+### 11.2 JSON schema (`version: 2`)
 
 ```jsonc
 {
-  "version": 1,
+  "version": 2,                    // format version, see 11.7
   "branch": "feature/cool-thing",  // raw git branch name (authoritative); set by first writer
   "notes": [
     {
@@ -523,6 +577,12 @@ The project root is:
       "orphaned": false,          // true when re-anchoring could not confidently place the note
       "author": "user",           // "user" | "agent"
       "authorTitle": "Jan Tobola", // display name (git user.name for user, model name for agent)
+      "audience": "agent+external", // optional: private | agent | external | agent+external; absent = agent
+      "source": {                   // optional: where it came from / was published to
+        "url": "https://gitlab.example/group/app/-/merge_requests/7#note_501",
+        "id": 501,                  // the comment's id on the forge
+        "thread": "9f8e7d6c5b4a"    // the forge's discussion id; on a thread's first comment only
+      },
       "createdAt": "2026-07-17T10:00:00Z", // RFC3339 / ISO-8601 UTC
       "updatedAt": "2026-07-17T10:00:00Z",
       "replies": [
@@ -530,6 +590,8 @@ The project root is:
           "id": "r1a2",
           "author": "agent",       // "user" | "agent"
           "authorTitle": "Opus 4.6", // optional display name
+          "audience": "external",    // optional, same values; absent = agent
+          "source": { "url": "…", "id": 502 }, // optional; a reply has no thread of its own
           "content": "Done — wrapped in an error check.",
           "createdAt": "2026-07-17T10:05:00Z"
         }
@@ -541,7 +603,17 @@ The project root is:
 
 #### Field rules
 
-- Unknown fields MUST be preserved on round-trip where practical (forward-compat).
+- Every change to the shape bumps `version`, and a component refuses a newer one (11.7).
+  There is no "compatible addition": the readers are typed and would drop a field they do not
+  know on the next write.
+- `audience` is one of `private`, `agent`, `external`, `agent+external`, on a comment and on
+  each reply. Absent or empty means `agent`; a writer leaves it out for the default, and an
+  explicit `"agent"` read from a file round-trips unchanged. A value a reader does not know
+  MUST be treated as `private` (never shown to an agent). The audience of a thread is its
+  root's; a reply under a `private` root is effectively `private` whatever it stores.
+- `source` is optional metadata (`url`, `id`, `thread`, each omitted when empty). `thread` is
+  only meaningful on a thread's first comment. `audience` including `external` with no
+  `source` means the comment is waiting to be published.
 - `branch` is the **raw** (unsanitized) git branch name, e.g. `"feature/cool-thing"`.
   It is authoritative — the filename slug (`notes_feature_cool-thing.json`) is only
   a filesystem distinction. Whoever creates the first thread is responsible for
@@ -676,3 +748,21 @@ plugin uses **merge-on-write**: before saving it reloads the current file and
 folds in any notes it doesn't yet know about, so it never deletes comments the
 agent added while the plugin's model was stale. Within a single note the model
 is still **last write wins**, reconciled by reload.
+
+### 11.7 Compatibility and versions
+
+`version` is the **format version**, one integer, currently `2`. It is separate from the
+version of the CLI or of a plugin (`incomm version` reports both).
+
+- Every change to the JSON shape bumps it. There are no minor versions.
+- A writer stamps its own format version on every save. A file with no `version` is `1`.
+- A reader that meets a `version` greater than it supports MUST NOT read or write the file:
+  the CLI exits non-zero, a plugin shows a notification and stays out of the way. The version
+  is read **before** the body is decoded, because a newer shape may not decode at all.
+  Message: `.incomm/notes_<branch>.json is format vN, this <component> understands up to vM - update <component>`.
+- Older files stay readable. Saving upgrades them, after which an older component refuses them.
+- Upgrade the CLI and both plugins together. Builds from before this rule (CLI 1.0.x,
+  plugins up to 1.2.x) do not check the version and will drop fields they do not know.
+- Fixtures: `fixtures/notes.sample.json` (v1), `fixtures/notes.v2.sample.json` (all four
+  audiences, `source`), `fixtures/notes.future.json` (`version: 99`, a shape nothing
+  understands, for the refusal tests).

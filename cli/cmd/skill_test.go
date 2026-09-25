@@ -40,6 +40,19 @@ func TestWriteSkillFile(t *testing.T) {
 		}
 	}
 
+	// The skill keeps the agent away from what is not addressed to it, without
+	// teaching it the flags that would reach it.
+	for _, must := range []string{"addressed to you", "directly (always go through the CLI)", "newer format"} {
+		if !strings.Contains(content, must) {
+			t.Errorf("SKILL.md is missing %q", must)
+		}
+	}
+	for _, mustNot := range []string{"--view", "private", "incomm set", "--audience"} {
+		if strings.Contains(content, mustNot) {
+			t.Errorf("SKILL.md must not teach %q", mustNot)
+		}
+	}
+
 	// Re-writing is idempotent and overwrites cleanly.
 	path2, err := writeSkillFile()
 	if err != nil || path2 != want {

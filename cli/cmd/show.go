@@ -23,10 +23,12 @@ var showCmd = &cobra.Command{
 		if _, err := reanchorAll(st, nf); err != nil {
 			return err
 		}
-		note := nf.Find(id)
-		if note == nil {
-			return fmt.Errorf("no comment with id %q", id)
+		full := nf.FindVisible(id, currentView())
+		if full == nil {
+			return noComment(id)
 		}
+		shown, _ := full.InView(currentView())
+		note := &shown
 
 		if flagJSON {
 			return emitJSON(note)

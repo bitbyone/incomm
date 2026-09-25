@@ -21,9 +21,15 @@ var removeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if !nf.Remove(id) {
-			return fmt.Errorf("no comment with id %q", id)
+		note := nf.FindVisible(id, currentView())
+		if note == nil {
+			return noComment(id)
 		}
+		// Deleting the thread would take replies this view cannot see with it.
+		if shown, _ := note.InView(currentView()); len(shown.Replies) != len(note.Replies) {
+			return fmt.Errorf("comment %q has replies outside your view; it cannot be deleted from here", id)
+		}
+		nf.Remove(id)
 		if err := st.Save(nf); err != nil {
 			return err
 		}

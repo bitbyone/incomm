@@ -102,6 +102,13 @@ live next to the relevant line instead of being packed into one chat message.
 - Use ` + "`" + `--author-title` + "`" + ` to identify yourself (e.g. ` + "`" + `--author-title "Opus 4.6"` + "`" + `).
   Compatible integrations may render this as "Agent (Opus 4.6)". **Always include your
   model name** so the human knows which agent wrote each comment.
+- You are shown the comments addressed to you, and only those. The human keeps some
+  notes to themselves and prepares others for the merge request; incomm does not
+  return them, on purpose. Do not look for them, do not read ` + "`" + `.incomm/*.json` + "`" + `
+  directly (always go through the CLI), and do not answer threads you cannot see.
+  A comment that is not listed simply is not yours to act on.
+- If a command fails because the notes file is a newer format than this incomm
+  understands, stop and tell the user to update incomm. Do not try to work around it.
 
 ## What you can do
 
@@ -161,7 +168,7 @@ incomm reply <id> -c TEXT [--author-title T]         reply to a comment
 incomm resolve <id>                                  mark a comment resolved
 incomm unresolve <id>                                reopen a resolved comment
 incomm rm <id>                                       delete one comment
-incomm clear                                         delete ALL comments
+incomm clear                                         delete all comments you can see
 incomm reanchor [--file F]                           recompute line positions after edits
 incomm anchor get <id> [--json]                      show a comment's position + anchor fields
 incomm anchor set <id> [--line N|N:M] [field flags]  set final position / edit anchor fields
@@ -253,4 +260,7 @@ The ` + "`" + `anchor` + "`" + ` object is how a comment re-finds its line after
 ` + "`" + `contextBefore` + "`" + `/` + "`" + `contextAfter` + "`" + ` the trimmed lines just outside the range, and
 ` + "`" + `checksum` + "`" + ` a hash of the exact block. ` + "`" + `incomm anchor get <id> --json` + "`" + ` returns just the
 position + this object; the ` + "`" + `anchor set` + "`" + ` field flags edit these values directly.
+
+A comment or reply may also carry ` + "`" + `audience` + "`" + ` and ` + "`" + `source` + "`" + `. They are bookkeeping for the
+human's own tooling: leave them as they are.
 `

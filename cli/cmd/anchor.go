@@ -41,9 +41,9 @@ var anchorGetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		note := nf.Find(args[0])
+		note := nf.FindVisible(args[0], currentView())
 		if note == nil {
-			return fmt.Errorf("no comment with id %q", args[0])
+			return noComment(args[0])
 		}
 		if flagJSON {
 			return emitJSON(map[string]any{
@@ -108,9 +108,9 @@ Examples:
 		if err != nil {
 			return err
 		}
-		note := nf.Find(args[0])
+		note := nf.FindVisible(args[0], currentView())
 		if note == nil {
-			return fmt.Errorf("no comment with id %q", args[0])
+			return noComment(args[0])
 		}
 
 		fieldsChanged := anyAnchorFieldChanged(cmd)
@@ -206,6 +206,10 @@ un-orphaned. Restrict with --id or --file.`,
 		nf, err := st.Load()
 		if err != nil {
 			return err
+		}
+
+		if anchorRecomputeID != "" && nf.FindVisible(anchorRecomputeID, currentView()) == nil {
+			return noComment(anchorRecomputeID)
 		}
 
 		fileFilter := ""

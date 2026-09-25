@@ -18,6 +18,10 @@ var (
 	addContent     string
 	addAuthor      string
 	addAuthorTitle string
+	addAudience    string
+	addSourceURL   string
+	addSourceID    int64
+	addSourceThr   string
 )
 
 var addCmd = &cobra.Command{
@@ -34,6 +38,10 @@ Examples:
 			return fmt.Errorf("--file, --line and --content are required")
 		}
 		startLine, endLine, err := parseLineSpec(addLine)
+		if err != nil {
+			return err
+		}
+		audience, err := audienceOf(addAudience)
 		if err != nil {
 			return err
 		}
@@ -82,6 +90,8 @@ Examples:
 			Orphaned:    false,
 			Author:      author,
 			AuthorTitle: authorTitle,
+			Audience:    audience,
+			Source:      sourceOf(addSourceURL, addSourceID, addSourceThr),
 			CreatedAt:   now,
 			UpdatedAt:   now,
 			Replies:     []model.Reply{},
@@ -122,5 +132,9 @@ func init() {
 	addCmd.Flags().StringVarP(&addContent, "content", "c", "", "comment text (required)")
 	addCmd.Flags().StringVar(&addAuthor, "author", model.AuthorAgent, "author: user or agent")
 	addCmd.Flags().StringVar(&addAuthorTitle, "author-title", "", "display name (e.g. model name for agent, git user.name for user)")
+	addCmd.Flags().StringVar(&addAudience, "audience", "", "who may see it: agent (default), external or agent+external")
+	addCmd.Flags().StringVar(&addSourceURL, "source-url", "", "where the comment came from (metadata)")
+	addCmd.Flags().Int64Var(&addSourceID, "source-id", 0, "the comment's id on the forge (metadata)")
+	addCmd.Flags().StringVar(&addSourceThr, "source-thread", "", "the forge's discussion id (metadata)")
 	rootCmd.AddCommand(addCmd)
 }

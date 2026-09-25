@@ -113,6 +113,67 @@ T.test("encoding escapes exactly as Go's encoding/json does", function()
   T.ok(text:find('"replies": []', 1, true), "empty slices are [] not null")
 end)
 
+--- Install a fixture as the notes file of a fresh repo and return its bytes.
+---@param dir string
+---@param fixture string
+---@return string
+local function install_fixture(dir, fixture)
+  make_repo(dir, "main")
+  vim.fn.mkdir(dir .. "/.incomm", "p")
+  local data = require("incomm.git").read_file(T.repo_root .. "/fixtures/" .. fixture)
+  local fd = assert(io.open(dir .. "/.incomm/notes_main.json", "wb"))
+  fd:write(data)
+  fd:close()
+  return data
+end
+
+T.test("a file in a newer format is refused, whatever its shape, and left untouched", function()
+  T.with_tmpdir(function(dir)
+    local before = install_fixture(dir, "notes.future.json")
+    local s = store.open(dir)
+    local loaded, err, incompat = s:load()
+    T.eq(err, nil)
+    T.eq(#loaded.notes, 0, "no model is taken from it")
+    T.eq(incompat, { found = 99, supported = model.SCHEMA_VERSION })
+    T.eq(s:read_raw(), before, "loading never writes")
+    T.eq(select(3, model.decode(before)).found, 99)
+  end)
+end)
+
+T.test("a v1 file loads and is stamped with the current version on save", function()
+  T.with_tmpdir(function(dir)
+    install_fixture(dir, "notes.sample.json")
+    local s = store.open(dir)
+    local f = s:load()
+    T.eq(f.version, 1)
+    T.eq(#f.notes, 3)
+    s:save(f)
+    T.eq(s:load().version, model.SCHEMA_VERSION)
+    T.ok(s:read_raw():find('"version": 2', 1, true), "the file says version 2")
+  end)
+end)
+
+T.test("a v2 file round-trips audience and source byte for byte", function()
+  T.with_tmpdir(function(dir)
+    local before = install_fixture(dir, "notes.v2.sample.json")
+    local s = store.open(dir)
+    local f = s:load()
+    T.eq(f.notes[2].audience, "agent+external")
+    T.eq(f.notes[2].source.id, 501)
+    T.eq(f.notes[2].replies[1].source.thread, nil)
+    T.eq(f.notes[3].audience, "private")
+    T.eq(f.notes[1].audience, nil, "an absent audience stays absent")
+    -- The fixture has no branch field and writes `&`, `<` and `>` raw, where Go
+    -- (and so this encoder) escapes them; a save stamps the branch, escapes those
+    -- three and changes nothing else.
+    s:save(f)
+    local want = before:gsub('"version": 2,\n', '"version": 2,\n  "branch": "main",\n', 1)
+    want = want:gsub("Reviewer & Co <r@example.com>", "Reviewer \\u0026 Co \\u003cr@example.com\\u003e", 1)
+    want = want:gsub("note_501&x=1", "note_501\\u0026x=1", 1)
+    T.eq(s:read_raw(), want)
+  end)
+end)
+
 if not has_cli then
   T.test("SKIPPED: byte-identity with the CLI (incomm not on $PATH)", function() end)
 else
@@ -135,6 +196,46 @@ else
       local on_disk = s:read_raw()
       local reencoded = model.encode(s:load())
       T.eq(reencoded, on_disk, "plugin re-encoding differs from the CLI's bytes")
+    end)
+  end)
+
+  -- An older `incomm` on $PATH has no audience flags and no `version` command.
+  local function cli_speaks_v2()
+    local out = vim.fn.system({ "incomm", "version", "--json" })
+    if vim.v.shell_error ~= 0 then
+      return false
+    end
+    local ok, info = pcall(vim.json.decode, out)
+    return ok and type(info) == "table" and (info.formatVersion or 0) >= 2
+  end
+
+  T.test("audience and source are byte-identical to the CLI's output", function()
+    if not cli_speaks_v2() then
+      io.write("       (skipped: the incomm on $PATH predates format v2)\n")
+      return
+    end
+    T.with_tmpdir(function(dir)
+      make_repo(dir, "main")
+      local add = vim.fn.system({
+        "incomm", "--root", dir, "add",
+        "-f", dir .. "/src/main.go", "-l", "3:5",
+        "-c", "imported & <linked>",
+        "--author", "user", "--author-title", "Reviewer",
+        "--audience", "agent+external",
+        "--source-url", "https://gitlab.example/g/a/-/merge_requests/7#note_501&x=1",
+        "--source-id", "501", "--source-thread", "9f8e7d6c5b4a",
+        "--json",
+      })
+      local note = vim.json.decode(add)
+      vim.fn.system({
+        "incomm", "--root", dir, "reply", note.id, "-c", "for the forge",
+        "--audience", "external", "--source-url", "https://gitlab.example/x#note_502", "--source-id", "502",
+      })
+      local s = store.open(dir)
+      local on_disk = s:read_raw()
+      T.ok(on_disk:find('"audience": "agent+external"', 1, true), "the CLI wrote the audience")
+      T.ok(on_disk:find('"version": 2', 1, true), "the CLI stamped version 2")
+      T.eq(model.encode(s:load()), on_disk, "plugin re-encoding differs from the CLI's bytes")
     end)
   end)
 

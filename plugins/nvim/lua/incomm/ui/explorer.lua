@@ -27,6 +27,7 @@ local composer = require("incomm.ui.composer")
 local config = require("incomm.config")
 local format = require("incomm.ui.format")
 local hl = require("incomm.ui.highlights")
+local model = require("incomm.model")
 
 local M = {}
 
@@ -361,6 +362,8 @@ local function render_detail(self)
     width = bubble_width,
     indent = 1,
     border = config.options.card.border,
+    audience = model.effective_audience(note, note),
+    published = model.is_published(note),
   })
   for _, reply in ipairs(note.replies) do
     vim.list_extend(
@@ -373,6 +376,8 @@ local function render_detail(self)
         width = math.max(bubble_width - config.options.card.reply_indent, 20),
         indent = 1 + config.options.card.reply_indent,
         border = config.options.card.border,
+        audience = model.effective_audience(note, reply),
+        published = model.is_published(reply),
       })
     )
   end
@@ -676,6 +681,12 @@ function M.open(svc, rel)
       svc:set_resolved(note.id, not note.resolved)
     end
   end)
+  map(list, "a", function()
+    local note = selected()
+    if note then
+      require("incomm.ui.audience").change(svc, note)
+    end
+  end)
   map(list, "d", function()
     local note = selected()
     if note then
@@ -775,6 +786,7 @@ function M.help(self)
     { "r", "reply" },
     { "e", "edit your comment" },
     { "x", "resolve / reopen" },
+    { "a", "change who sees a comment" },
     { "d", "delete the thread" },
     { "/", "search" },
     { "<C-o>", "show open threads" },

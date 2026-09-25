@@ -20,6 +20,7 @@ local bubble = require("incomm.ui.bubble")
 local config = require("incomm.config")
 local format = require("incomm.ui.format")
 local hl = require("incomm.ui.highlights")
+local model = require("incomm.model")
 local state = require("incomm.ui.state")
 
 local M = {}
@@ -135,6 +136,8 @@ function M.card_lines(note, start_line, end_line, available, indent)
       content = note.content,
       width = width,
       border = opts.border,
+      audience = model.effective_audience(note, note),
+      published = model.is_published(note),
     })
   )
 
@@ -154,6 +157,8 @@ function M.card_lines(note, start_line, end_line, available, indent)
         width = math.max(width - reply_indent, 20),
         indent = reply_indent,
         border = opts.border,
+        audience = model.effective_audience(note, reply),
+        published = model.is_published(reply),
       })
     )
   end

@@ -34,6 +34,79 @@ local function fresh(dir)
   return service.for_root(dir)
 end
 
+--- Replace the notes file of `dir` with a fixture's bytes.
+---@param dir string
+---@param fixture string
+---@return string
+local function put_fixture(dir, fixture)
+  vim.fn.mkdir(dir .. "/.incomm", "p")
+  local data = require("incomm.git").read_file(T.repo_root .. "/fixtures/" .. fixture)
+  local fd = assert(io.open(dir .. "/.incomm/notes_main.json", "wb"))
+  fd:write(data)
+  fd:close()
+  return data
+end
+
+T.test("a newer format blocks the service: nothing is drawn and nothing is written", function()
+  T.with_tmpdir(function(dir)
+    service.reset()
+    make_repo(dir)
+    local before = put_fixture(dir, "notes.future.json")
+    local messages = {}
+    local notify = vim.notify
+    vim.notify = function(msg)
+      messages[#messages + 1] = msg
+    end
+    local ok, err = pcall(function()
+      local svc = service.for_root(dir)
+      T.ok(svc.blocked, "the service is blocked")
+      T.eq(svc.blocked.found, 99)
+      T.eq(#svc:all_notes(), 0)
+      T.eq(#messages, 1, "one notification when it is first seen")
+      T.ok(messages[1]:find("format v99", 1, true), messages[1])
+      T.ok(messages[1]:find("understands up to v2", 1, true), messages[1])
+      T.ok(messages[1]:find(".incomm/notes_main.json", 1, true), messages[1])
+
+      svc:reload()
+      T.eq(#messages, 1, "reloading the same file does not repeat it")
+
+      T.eq(svc:check_writable(), false)
+      svc:persist(true)
+      svc:persist_quietly()
+      T.eq(svc.store:read_raw(), before, "a blocked service never writes")
+    end)
+    vim.notify = notify
+    if not ok then
+      error(err, 0)
+    end
+  end)
+end)
+
+T.test("the service unblocks once the file is readable again", function()
+  T.with_tmpdir(function(dir)
+    service.reset()
+    make_repo(dir)
+    put_fixture(dir, "notes.future.json")
+    local notify = vim.notify
+    vim.notify = function() end
+    local ok, err = pcall(function()
+      local svc = service.for_root(dir)
+      T.ok(svc.blocked)
+      put_fixture(dir, "notes.sample.json")
+      svc:reload()
+      T.eq(svc.blocked, nil)
+      T.eq(#svc:all_notes(), 3)
+      T.eq(svc:check_writable(), true)
+      svc:set_resolved("c7f3a1b2", true)
+      T.eq(svc.store:load().version, 2, "the next write is stamped with the current version")
+    end)
+    vim.notify = notify
+    if not ok then
+      error(err, 0)
+    end
+  end)
+end)
+
 T.test("adding a thread writes a file the CLI can read", function()
   T.with_tmpdir(function(dir)
     local svc = fresh(dir)

@@ -82,14 +82,19 @@ function Store:read_raw()
   return git.read_file(self:notes_path())
 end
 
---- Load the branch-scoped notes file. A missing file yields an empty model.
----@return incomm.NotesFile, string? error
+--- Load the branch-scoped notes file. A missing file yields an empty model. A
+--- file in a newer format than this build understands yields an empty model and
+--- the third value, and must not be written over.
+---@return incomm.NotesFile, string? error, incomm.Incompat? incompat
 function Store:load()
   local data = self:read_raw()
   if not data then
     return model.new_file()
   end
-  local parsed, err = model.decode(data)
+  local parsed, err, incompat = model.decode(data)
+  if incompat then
+    return model.new_file(), nil, incompat
+  end
   if not parsed then
     return model.new_file(), err
   end
@@ -106,6 +111,7 @@ function Store:save(f)
     f.branch = self.raw_branch
   end
   model.normalize(f)
+  f.version = model.SCHEMA_VERSION
   local data = model.encode(f)
 
   local dir = self:dir()

@@ -23,6 +23,10 @@ subcommands.thread = function(opts)
 end
 subcommands.reply = act("reply")
 subcommands.edit = act("edit")
+-- `:Incomm audience` steps the cycle; `:Incomm audience private` names the target.
+subcommands.audience = function(opts)
+  require("incomm.actions").audience(opts.fargs[2])
+end
 subcommands.resolve = act("resolve")
 subcommands.delete = act("delete_thread")
 subcommands["delete-comment"] = act("delete_comment")
@@ -73,12 +77,19 @@ vim.api.nvim_create_user_command("Incomm", function(opts)
   end
   fn(opts)
 end, {
-  nargs = "?",
+  nargs = "*",
   range = true,
   desc = "incomm: line-anchored context threads",
-  complete = function(lead)
+  complete = function(lead, line)
+    local words = vim.split(vim.trim(line), "%s+")
+    local second = #words > 2 or (#words == 2 and line:match("%s$"))
+    local candidates = names
+    if second then
+      -- Only `audience` takes an argument.
+      candidates = words[2] == "audience" and require("incomm.model").AUDIENCE_CYCLE or {}
+    end
     return vim.tbl_filter(function(name)
       return name:find(lead, 1, true) == 1
-    end, names)
+    end, candidates)
   end,
 })

@@ -12,7 +12,12 @@ local uv = vim.uv or vim.loop
 
 local M = {}
 
-M.SCHEMA_VERSION = 1
+-- The newest notes-file format this build reads and writes, and the version every
+-- save stamps. Any change to the JSON shape bumps it; a file with a greater
+-- version is refused (read and write), never round-tripped.
+M.SCHEMA_VERSION = 2
+-- What a file with no version field is taken to be.
+M.LEGACY_VERSION = 1
 M.AUTHOR_USER = "user"
 M.AUTHOR_AGENT = "agent"
 
@@ -23,10 +28,17 @@ M.AUTHOR_AGENT = "agent"
 ---@field contextAfter string
 ---@field checksum string
 
+---@class incomm.Source
+---@field url? string
+---@field id? integer the comment's id on the forge
+---@field thread? string the forge's discussion id (a thread's first comment only)
+
 ---@class incomm.Reply
 ---@field id string
 ---@field author string
 ---@field authorTitle? string
+---@field audience? string private | agent | external | agent+external; nil is agent
+---@field source? incomm.Source
 ---@field content string
 ---@field createdAt string
 
@@ -41,6 +53,8 @@ M.AUTHOR_AGENT = "agent"
 ---@field orphaned boolean
 ---@field author string
 ---@field authorTitle? string
+---@field audience? string private | agent | external | agent+external; nil is agent
+---@field source? incomm.Source
 ---@field createdAt string
 ---@field updatedAt string
 ---@field replies incomm.Reply[]
@@ -80,7 +94,7 @@ end
 ---@param f incomm.NotesFile
 ---@return incomm.NotesFile
 function M.normalize(f)
-  f.version = f.version or M.SCHEMA_VERSION
+  f.version = f.version or M.LEGACY_VERSION
   if f.branch == vim.NIL then
     f.branch = nil
   end
@@ -94,6 +108,12 @@ function M.normalize(f)
     note.author = note.author or M.AUTHOR_USER
     if note.authorTitle == vim.NIL then
       note.authorTitle = nil
+    end
+    if note.audience == vim.NIL then
+      note.audience = nil
+    end
+    if note.source == vim.NIL then
+      note.source = nil
     end
     note.createdAt = note.createdAt or M.now_utc()
     note.updatedAt = note.updatedAt or note.createdAt
@@ -111,6 +131,12 @@ function M.normalize(f)
       reply.createdAt = reply.createdAt or note.createdAt
       if reply.authorTitle == vim.NIL then
         reply.authorTitle = nil
+      end
+      if reply.audience == vim.NIL then
+        reply.audience = nil
+      end
+      if reply.source == vim.NIL then
+        reply.source = nil
       end
     end
   end
@@ -141,6 +167,98 @@ function M.remove(f, id)
     end
   end
   return false
+end
+
+-- ---------------------------------------------------------------------------
+-- Audience (AGENTS.md §11.2): who may see a comment
+-- ---------------------------------------------------------------------------
+
+M.AUDIENCE_PRIVATE = "private"
+M.AUDIENCE_AGENT = "agent"
+M.AUDIENCE_EXTERNAL = "external"
+M.AUDIENCE_BOTH = "agent+external"
+
+--- The order one step of the audience toggle walks through.
+M.AUDIENCE_CYCLE = { M.AUDIENCE_AGENT, M.AUDIENCE_BOTH, M.AUDIENCE_EXTERNAL, M.AUDIENCE_PRIVATE }
+
+local KNOWN_AUDIENCE = {
+  [M.AUDIENCE_PRIVATE] = true,
+  [M.AUDIENCE_AGENT] = true,
+  [M.AUDIENCE_EXTERNAL] = true,
+  [M.AUDIENCE_BOTH] = true,
+}
+
+--- An audience as stored, resolved: absent or empty is agent, and a value this
+--- build does not know is private, so a newer audience is never shown to anyone
+--- it was not meant for (the same rule the CLI applies).
+---@param audience string?
+---@return string
+function M.normalize_audience(audience)
+  if audience == nil or audience == "" or audience == vim.NIL then
+    return M.AUDIENCE_AGENT
+  end
+  if KNOWN_AUDIENCE[audience] then
+    return audience
+  end
+  return M.AUDIENCE_PRIVATE
+end
+
+--- The audience one step on in the cycle from a stored one.
+---@param audience string?
+---@return string
+function M.next_audience(audience)
+  local current = M.normalize_audience(audience)
+  for i, value in ipairs(M.AUDIENCE_CYCLE) do
+    if value == current then
+      return M.AUDIENCE_CYCLE[i % #M.AUDIENCE_CYCLE + 1]
+    end
+  end
+  return M.AUDIENCE_AGENT
+end
+
+--- The audience a comment really has: its own, unless the thread's root is
+--- private, in which case everything under it is private whatever it stores.
+--- The stored value is never touched, so unlocking the root gives every reply
+--- its own audience back.
+---@param root incomm.Note
+---@param comment incomm.Note|incomm.Reply the root itself or one of its replies
+---@return string
+function M.effective_audience(root, comment)
+  if M.normalize_audience(root.audience) == M.AUDIENCE_PRIVATE then
+    return M.AUDIENCE_PRIVATE
+  end
+  return M.normalize_audience(comment.audience)
+end
+
+---@param audience string?
+---@return boolean
+function M.includes_external(audience)
+  local a = M.normalize_audience(audience)
+  return a == M.AUDIENCE_EXTERNAL or a == M.AUDIENCE_BOTH
+end
+
+---@param audience string?
+---@return boolean
+function M.includes_agent(audience)
+  local a = M.normalize_audience(audience)
+  return a == M.AUDIENCE_AGENT or a == M.AUDIENCE_BOTH
+end
+
+--- Whether a comment is on the forge already: something recorded where.
+---@param comment incomm.Note|incomm.Reply
+---@return boolean
+function M.is_published(comment)
+  local source = comment.source
+  return type(source) == "table" and (source.id ~= nil or (source.url ~= nil and source.url ~= ""))
+end
+
+--- The form an audience is written in: the default is left out of the file, so
+--- what this plugin writes stays byte-identical to what the CLI writes.
+---@param audience string
+---@return string?
+function M.stored_audience(audience)
+  local a = M.normalize_audience(audience)
+  return a ~= M.AUDIENCE_AGENT and a or nil
 end
 
 ---@generic T
@@ -204,7 +322,8 @@ local function encode_object(out, obj, order, omit, indent, write_value)
 end
 
 local ANCHOR_ORDER = { "startPrefix", "endPrefix", "contextBefore", "contextAfter", "checksum" }
-local REPLY_ORDER = { "id", "author", "authorTitle", "content", "createdAt" }
+local REPLY_ORDER = { "id", "author", "authorTitle", "audience", "source", "content", "createdAt" }
+local SOURCE_ORDER = { "url", "id", "thread" }
 local NOTE_ORDER = {
   "id",
   "file",
@@ -216,17 +335,56 @@ local NOTE_ORDER = {
   "orphaned",
   "author",
   "authorTitle",
+  "audience",
+  "source",
   "createdAt",
   "updatedAt",
   "replies",
 }
+local COMMENT_OMIT = { authorTitle = true, audience = true, source = true }
+
+--- A source is `omitempty` in Go: nil when absent, and each field is skipped when
+--- empty or zero.
+---@param source incomm.Source?
+---@return boolean
+local function source_present(source)
+  return type(source) == "table" and source ~= vim.NIL
+end
+
+---@param out string[]
+---@param source incomm.Source
+---@param indent string
+local function encode_source(out, source, indent)
+  local omit = { url = true, id = true, thread = true }
+  local clean = {}
+  for _, key in ipairs(SOURCE_ORDER) do
+    local v = source[key]
+    if v == 0 then
+      v = nil
+    end
+    clean[key] = v
+  end
+  encode_object(out, clean, SOURCE_ORDER, omit, indent, function(o, key, value)
+    if key == "id" then
+      o[#o + 1] = tostring(math.floor(value))
+    else
+      o[#o + 1] = quote(tostring(value))
+    end
+  end)
+end
 
 ---@param out string[]
 ---@param note incomm.Note
 ---@param indent string
 local function encode_note(out, note, indent)
-  encode_object(out, note, NOTE_ORDER, { authorTitle = true }, indent, function(o, key, value, inner)
-    if key == "anchor" then
+  local shown = vim.tbl_extend("force", {}, note)
+  if not source_present(shown.source) then
+    shown.source = nil
+  end
+  encode_object(out, shown, NOTE_ORDER, COMMENT_OMIT, indent, function(o, key, value, inner)
+    if key == "source" then
+      encode_source(o, value, inner)
+    elseif key == "anchor" then
       encode_object(o, value or {}, ANCHOR_ORDER, {}, inner, function(o2, _, v2)
         o2[#o2 + 1] = quote(tostring(v2 or ""))
       end)
@@ -238,8 +396,16 @@ local function encode_note(out, note, indent)
         o[#o + 1] = "[\n"
         for i, reply in ipairs(replies) do
           o[#o + 1] = inner .. "  "
-          encode_object(o, reply, REPLY_ORDER, { authorTitle = true }, inner .. "  ", function(o2, _, v2)
-            o2[#o2 + 1] = quote(tostring(v2 or ""))
+          local shown_reply = vim.tbl_extend("force", {}, reply)
+          if not source_present(shown_reply.source) then
+            shown_reply.source = nil
+          end
+          encode_object(o, shown_reply, REPLY_ORDER, COMMENT_OMIT, inner .. "  ", function(o2, key2, v2, inner2)
+            if key2 == "source" then
+              encode_source(o2, v2, inner2)
+            else
+              o2[#o2 + 1] = quote(tostring(v2 or ""))
+            end
           end)
           o[#o + 1] = (i < #replies) and ",\n" or "\n"
         end
@@ -285,10 +451,16 @@ function M.encode(f)
   return table.concat(out)
 end
 
+---@class incomm.Incompat
+---@field found integer the version the file carries
+---@field supported integer the newest version this build understands
+
 --- Parse a notes file. Returns an empty model for empty/corrupt input rather
---- than throwing: a half-written file must never take the UI down.
+--- than throwing: a half-written file must never take the UI down. A file
+--- written in a newer format comes back as no model and an `incompat` value,
+--- whatever its shape: it must be neither read nor written over.
 ---@param text string
----@return incomm.NotesFile?, string? error
+---@return incomm.NotesFile?, string? error, incomm.Incompat? incompat
 function M.decode(text)
   if vim.trim(text) == "" then
     return M.new_file()
@@ -296,6 +468,9 @@ function M.decode(text)
   local ok, decoded = pcall(vim.json.decode, text, { luanil = { object = true, array = true } })
   if not ok or type(decoded) ~= "table" then
     return nil, tostring(decoded)
+  end
+  if type(decoded.version) == "number" and decoded.version > M.SCHEMA_VERSION then
+    return nil, nil, { found = decoded.version, supported = M.SCHEMA_VERSION }
   end
   return M.normalize(decoded --[[@as incomm.NotesFile]])
 end

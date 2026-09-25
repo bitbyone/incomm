@@ -73,6 +73,7 @@ the identically-named IntelliJ action.
 | `resolve` | Resolve / reopen the thread under the cursor (resolving collapses its card) |
 | `delete` | Delete the thread under the cursor, replies and all |
 | `delete-comment` | Delete one message (a reply, or the whole thread if it is the original) |
+| `audience [name]` | Change who may see a comment: one step along the cycle, or straight to `private`, `agent`, `external` or `agent+external` (see below) |
 | `toggle` | Show/hide this thread's card; the sign stays |
 | `toggle-all` | Show/hide every card |
 | `toggle-resolved` | Show/hide resolved cards only |
@@ -205,6 +206,7 @@ resolve to:
 | `IncommStateOpen` / `IncommStateResolved` / `IncommStateOrphaned` | `DiagnosticInfo` / `DiagnosticOk` / `DiagnosticError` | a thread's state |
 | `IncommContent` | `Normal` | comment text |
 | `IncommMuted` | `Comment` | timestamps, locations |
+| `IncommAudiencePending` / `IncommAudiencePublished` / `IncommAudiencePrivate` | `DiagnosticWarn` / `DiagnosticOk` / `DiagnosticHint` | the hue of an audience badge's state word, and of `private` |
 | `IncommSelection` / `IncommPreviewLine` | `Visual` / `CursorLine` | the explorer's selected row, and the anchored lines in its code preview |
 
 From those it derives the bubble borders, the dimmed body text, the calmed
@@ -249,6 +251,35 @@ first line, a thin band down the rest — so nothing ever paints over the code.
   replies arriving from outside raise a notification.
 * **The explorer** is its own float layout, not a picker, because a picker
   previews a *file* and what is wanted is a *thread*. See below.
+
+## Who sees a comment
+
+Every comment and every reply has an **audience**, and it belongs to that one
+comment, not to the thread:
+
+| Audience | Meaning |
+|---|---|
+| `agent` | The agent working in the checkout. The default; a comment with none is this. |
+| `agent+external` | The agent works on it, and it belongs on the merge request. |
+| `external` | Meant for the merge request, and not shown to the agent. |
+| `private` | You only. The CLI never returns it, in any view. |
+
+`:Incomm audience` moves a comment one step along
+`agent → agent+external → external → private → agent`. With more than one comment
+in the thread it asks which — the original, one of the replies, or the whole
+thread, which steps from the original's audience and moves every comment there —
+and it does not ask when there is only one. `:Incomm audience private` goes
+straight to a named audience. In the explorer the same flow is on `a`, so you can
+mark comments while you browse them. There is no default keymap.
+
+A bubble says so in its header line, next to the time, when it is anything but
+plain `agent`: `agent + external · not published`, `external · published`,
+`private`. The state word appears for what belongs on the merge request:
+*published* once the comment records where it went (its `source`), *not
+published* until then. It sits in the line the bubble already has, so a card is
+never taller for it, and it gets shorter (`+external`, then nothing) when the
+line has no room. A reply under a `private` thread shows `private` whatever it
+stores; its own audience is untouched and comes back if you unlock the thread.
 
 ## Living with other plugins
 
@@ -299,6 +330,7 @@ thread's state reads exactly like an unselected one's.
 | `<CR>` | go to the code |
 | `r` / `e` | reply / edit your comment |
 | `x` / `d` | resolve or reopen / delete |
+| `a` | change who sees a comment |
 | `/` | search (matches comments, replies, authors and paths) |
 | `<C-o>` / `<C-r>` / `<C-x>` | show open / resolved / orphaned threads |
 | `<C-d>` / `<C-u>` | scroll a long thread |
@@ -332,3 +364,12 @@ byte-identical to what the CLI writes, and that neither loses the other's work.
 
 See [AGENTS.md](../../AGENTS.md) §11 for the shared schema and the anchoring
 algorithm every integration implements.
+
+## File format versions
+
+The notes file carries a format `version`, and this plugin understands up to
+version 2 (which adds `audience` and `source` to comments). A file written in a
+newer format is refused: no threads are drawn from it, nothing is written over
+it, and you get one notification naming the file and the version. Update the
+plugin (or the CLI, if it is the one that is behind) and reload. Every save
+stamps the current version.

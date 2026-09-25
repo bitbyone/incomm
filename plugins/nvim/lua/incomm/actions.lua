@@ -17,7 +17,7 @@
 --   incomm.Reload           -> reload
 --   toggle detect changes   -> toggle_watch
 --
--- plus `reanchor`, `next`/`prev` and `delete_comment`, which have no IDE
+-- plus `audience`, `reanchor`, `next`/`prev` and `delete_comment`, which have no IDE
 -- counterpart: the CLI exposes re-anchoring, and thread-to-thread motion is how
 -- a Vim user navigates what the IDE's mouse reaches for.
 
@@ -71,7 +71,7 @@ end
 ---@param line2? integer
 function M.start_thread(line1, line2)
   local svc, rel, bufnr = current()
-  if not svc then
+  if not svc or not svc:check_writable() then
     return
   end
   local s, e
@@ -104,7 +104,7 @@ end
 --- Reply to the thread under the cursor.
 function M.reply()
   local note, svc = note_under_cursor()
-  if not note then
+  if not note or not svc:check_writable() then
     return
   end
   composer.open({
@@ -145,7 +145,7 @@ end
 --- IDE holds the same line: an agent's words are the agent's.
 function M.edit()
   local note, svc = note_under_cursor()
-  if not note then
+  if not note or not svc:check_writable() then
     return
   end
   local editable = vim.tbl_filter(function(m)
@@ -190,7 +190,7 @@ end
 --- one reply.
 function M.delete_comment()
   local note, svc = note_under_cursor()
-  if not note then
+  if not note or not svc:check_writable() then
     return
   end
   local entries = messages(note)
@@ -215,6 +215,19 @@ function M.delete_comment()
   end)
 end
 
+-- ---- audience -------------------------------------------------------------
+
+--- Change who may see a comment of the thread under the cursor: one step along
+--- agent -> agent + external -> external -> private, or straight to `audience`.
+---@param audience? string a named audience instead of the next step
+function M.audience(audience)
+  local note, svc = note_under_cursor()
+  if not note or not svc:check_writable() then
+    return
+  end
+  require("incomm.ui.audience").change(svc, note, audience)
+end
+
 -- ---- thread state ---------------------------------------------------------
 
 --- Resolve or reopen the thread under the cursor. Resolving also collapses the
@@ -222,7 +235,7 @@ end
 ---@param resolved? boolean explicit state; omit to toggle
 function M.resolve(resolved)
   local note, svc = note_under_cursor()
-  if not note then
+  if not note or not svc:check_writable() then
     return
   end
   local target = resolved
@@ -253,7 +266,7 @@ end
 --- the IDE -- `u` does not bring it back, but the CLI's `add` is one line away.
 function M.delete_thread()
   local note, svc = note_under_cursor()
-  if not note then
+  if not note or not svc:check_writable() then
     return
   end
   svc:remove_note(note.id)
@@ -323,7 +336,7 @@ end
 --- Delete every thread anchored to the current file.
 function M.clear_file()
   local svc, rel = current()
-  if not svc then
+  if not svc or not svc:check_writable() then
     return
   end
   local count = #svc:notes_for_file(rel)
@@ -341,6 +354,9 @@ end
 --- Delete every thread on this branch (removes the notes file).
 function M.clear_all()
   local svc = select(1, current(true)) or service.primary()
+  if not svc:check_writable() then
+    return
+  end
   local count = #svc:all_notes()
   if count == 0 then
     notify("no threads to clear")

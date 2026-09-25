@@ -42,6 +42,11 @@ local links = {
   IncommPreviewLine = "CursorLine",
   IncommDetailPath = "Title", -- where a thread lives, above its code
   IncommHelpKey = "Special",
+  -- The audience badge in a bubble's header. Pending is the one that asks
+  -- for something (it is meant for the forge and is not there yet).
+  IncommAudiencePending = "DiagnosticWarn",
+  IncommAudiencePublished = "DiagnosticOk",
+  IncommAudiencePrivate = "DiagnosticHint",
 }
 
 --- The resolved attributes of a highlight group, following links.
@@ -103,6 +108,10 @@ local function derive()
       vim.api.nvim_set_hl(0, "IncommCardState" .. state, { link = "IncommState" .. state })
       vim.api.nvim_set_hl(0, "IncommSign" .. state, { link = "IncommState" .. state })
     end
+    vim.api.nvim_set_hl(0, "IncommBadge", { link = "IncommMuted" })
+    for _, badge in ipairs({ "Pending", "Published", "Private" }) do
+      vim.api.nvim_set_hl(0, "IncommBadge" .. badge, { link = "IncommAudience" .. badge })
+    end
     return
   end
 
@@ -135,6 +144,18 @@ local function derive()
     vim.api.nvim_set_hl(0, "IncommCardState" .. state, { fg = blend(accent, surface, strength), bg = card_bg })
     -- The gutter sign sits in the code's own margin, so it is calmed too.
     vim.api.nvim_set_hl(0, "IncommSign" .. state, { fg = blend(accent, surface, strength) })
+  end
+
+  -- The audience badge sits in the header beside the timestamp, so it is as
+  -- quiet as the timestamp; only the state word and "private" carry a hue.
+  vim.api.nvim_set_hl(0, "IncommBadge", { fg = blend(muted, surface, keep - 0.05), italic = muted_italic })
+  for badge, base in pairs({
+    Pending = "IncommAudiencePending",
+    Published = "IncommAudiencePublished",
+    Private = "IncommAudiencePrivate",
+  }) do
+    local accent = color_of(base, "fg") or text
+    vim.api.nvim_set_hl(0, "IncommBadge" .. badge, { fg = blend(accent, surface, badge == "Pending" and 0.8 or 0.6) })
   end
 
   for author, accent in pairs(accents) do

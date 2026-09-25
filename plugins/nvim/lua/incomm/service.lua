@@ -30,6 +30,13 @@ local uv = vim.uv or vim.loop
 
 local M = {}
 
+--- `.incomm/<file>` as the messages name it.
+---@param st incomm.Store
+---@return string
+local function model_relative(st)
+  return store.DIR_NAME .. "/" .. st:notes_file_name()
+end
+
 ---@class incomm.Service
 ---@field store incomm.Store
 ---@field model incomm.NotesFile
@@ -62,6 +69,10 @@ function M.for_root(root, branch)
     locally_deleted = {},
     last_written = nil, ---@type string?
     author_title = nil, ---@type string?
+    -- Set while the notes file is in a newer format than this build understands:
+    -- nothing is read from it and nothing is written over it.
+    blocked = nil, ---@type incomm.Incompat?
+    warned = nil, ---@type string? "<path>@<version>" already announced
   }, Service)
   services[self.store.root] = self
   services[root] = self
@@ -169,6 +180,55 @@ end
 ---@return incomm.Note[]
 function Service:all_notes()
   return self.model.notes
+end
+
+--- Set who may see one comment: the thread's own (`reply_id` nil) or a reply.
+--- The default audience is stored as absent, so the file stays what the CLI
+--- would have written.
+---@param note_id string
+---@param reply_id string? nil for the thread's first comment
+---@param audience string private | agent | external | agent+external
+---@return boolean changed
+function Service:set_audience(note_id, reply_id, audience)
+  if self.blocked or model.normalize_audience(audience) ~= audience then
+    return false
+  end
+  local hit = false
+  self:mutate(note_id, function(note)
+    local target = note
+    if reply_id then
+      target = nil
+      for _, reply in ipairs(note.replies) do
+        if reply.id == reply_id then
+          target = reply
+        end
+      end
+    end
+    if target then
+      target.audience = model.stored_audience(audience)
+      note.updatedAt = model.now_utc()
+      hit = true
+    end
+  end)
+  return hit
+end
+
+--- Set the audience of every comment in a thread in one write.
+---@param note_id string
+---@param audience string
+---@return boolean changed
+function Service:set_thread_audience(note_id, audience)
+  if self.blocked or model.normalize_audience(audience) ~= audience then
+    return false
+  end
+  return self:mutate(note_id, function(note)
+    local stored = model.stored_audience(audience)
+    note.audience = stored
+    for _, reply in ipairs(note.replies) do
+      reply.audience = stored
+    end
+    note.updatedAt = model.now_utc()
+  end)
 end
 
 ---@param rel string
@@ -296,7 +356,14 @@ end
 function Service:reload(opts)
   opts = opts or {}
   local publish = opts.publish ~= false
-  local loaded, err = self.store:load()
+  local loaded, err, incompat = self.store:load()
+  if incompat then
+    return self:block(incompat, publish)
+  end
+  if self.blocked then
+    self.blocked = nil
+    self.warned = nil
+  end
   if err then
     vim.notify("incomm: could not read " .. self.store:notes_path() .. ": " .. err, vim.log.levels.WARN)
     return false
@@ -330,6 +397,53 @@ function Service:reload(opts)
   return true
 end
 
+--- Refuse a notes file written in a newer format: empty the model so no card
+--- is drawn from it, tell the user once per file and version, and stop writes.
+---@param incompat incomm.Incompat
+---@param publish boolean
+---@return boolean changed
+function Service:block(incompat, publish)
+  local path = self.store:notes_path()
+  local key = path .. "@" .. incompat.found
+  local already = self.blocked ~= nil and self.warned == key
+  local had_notes = #self.model.notes > 0
+  self.blocked = incompat
+  self.model = model.new_file()
+  self.locally_deleted = {}
+  self.last_written = nil
+  if not already then
+    self.warned = key
+    vim.notify(self:blocked_message(), vim.log.levels.ERROR)
+  end
+  if publish and had_notes then
+    self:publish_changed()
+  end
+  return had_notes
+end
+
+--- Why nothing can be read or written, in the words the user needs.
+---@return string
+function Service:blocked_message()
+  local incompat = self.blocked
+  return string.format(
+    "incomm: %s is format v%d, this plugin understands up to v%d - update the incomm plugin",
+    model_relative(self.store),
+    incompat and incompat.found or 0,
+    incompat and incompat.supported or model.SCHEMA_VERSION
+  )
+end
+
+--- False (after telling the user) while the notes file is in a format this
+--- build cannot write. Every action that changes notes asks first.
+---@return boolean
+function Service:check_writable()
+  if self.blocked then
+    vim.notify(self:blocked_message(), vim.log.levels.ERROR)
+    return false
+  end
+  return true
+end
+
 --- Re-detect the git branch and, if it changed, switch to that branch's notes
 --- file. Always publishes: switching to an empty branch must clear the cards
 --- the previous branch left on screen.
@@ -355,6 +469,9 @@ end
 --- agent wrote them while we held a stale model) before serializing.
 ---@param notify boolean whether to publish a change to listeners
 function Service:persist(notify)
+  if self.blocked then
+    return -- a newer format: never write over it
+  end
   if notify then
     self:publish_changed() -- immediate UI for the local change
   end

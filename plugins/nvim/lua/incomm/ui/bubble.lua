@@ -16,6 +16,7 @@
 
 local format = require("incomm.ui.format")
 local hl = require("incomm.ui.highlights")
+local model = require("incomm.model")
 
 local M = {}
 
@@ -45,6 +46,56 @@ end
 ---@field width integer total width of the box, borders included
 ---@field indent integer? leading spaces (replies are nested)
 ---@field border string|string[]|false
+---@field audience string? the comment's EFFECTIVE audience; nothing is drawn for plain agent
+---@field published boolean? whether the comment records where it went on the forge
+
+---@param chunks table[]
+---@return integer
+local function chunks_width(chunks)
+  local total = 0
+  for _, chunk in ipairs(chunks) do
+    total = total + vim.fn.strdisplaywidth(chunk[1])
+  end
+  return total
+end
+
+--- The audience label that trails the author and time in a bubble's header, as
+--- chunks, plus the display width they take. It lives in the header line that
+--- is already there, so a bubble is never taller for having one, and it gives
+--- way when the line is short of room: the state word goes first, then "agent +"
+--- shrinks to "+", then the whole badge.
+---@param audience string? effective audience
+---@param published boolean? whether it has a source
+---@param room integer display cells left on the header line
+---@return table[] chunks, integer used
+function M.badge(audience, published, room)
+  local a = model.normalize_audience(audience)
+  if a == model.AUDIENCE_AGENT then
+    return {}, 0
+  end
+  local candidates
+  if a == model.AUDIENCE_PRIVATE then
+    candidates = { { { "  private", "IncommBadgePrivate" } } }
+  else
+    local label = a == model.AUDIENCE_BOTH and "agent + external" or a
+    local word = published and "published" or "not published"
+    local word_hl = published and "IncommBadgePublished" or "IncommBadgePending"
+    candidates = {
+      { { "  " .. label, "IncommBadge" }, { " · " .. word, word_hl } },
+      { { "  " .. label, "IncommBadge" } },
+    }
+    if a == model.AUDIENCE_BOTH then
+      candidates[#candidates + 1] = { { "  +external", "IncommBadge" } }
+    end
+  end
+  for _, chunks in ipairs(candidates) do
+    local width = chunks_width(chunks)
+    if width <= room then
+      return chunks, width
+    end
+  end
+  return {}, 0
+end
 
 --- Build one bubble.
 ---@param opts incomm.BubbleOpts
@@ -97,13 +148,17 @@ function M.build(opts)
     row(line)
   end
 
-  -- Author and time.
+  -- Author and time, then who may see it.
   local name = format.author(opts.author, opts.title)
   local when = format.time(opts.created)
-  boxed({
+  local header = {
     { name, "IncommName" .. suffix },
     { "  " .. when, "IncommTime" .. suffix },
-  }, vim.fn.strdisplaywidth(name) + 2 + vim.fn.strdisplaywidth(when))
+  }
+  local used = vim.fn.strdisplaywidth(name) + 2 + vim.fn.strdisplaywidth(when)
+  local badge, badge_width = M.badge(opts.audience, opts.published, inner - 2 - used)
+  vim.list_extend(header, badge)
+  boxed(header, used + badge_width)
 
   -- Body, wrapped to the inner width.
   for _, text in ipairs(format.wrap(opts.content, inner - 2)) do

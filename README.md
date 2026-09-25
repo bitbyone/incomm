@@ -113,14 +113,14 @@ The Go CLI is the workhorse for agents and automated workflows.
 
 `incomm version` prints the CLI version and the notes format it understands (`--json` for tools).
 
-**Manual Build:**
-1. Install Go.
-2. Build and install:
-   ```bash
-   cd cli
-   go install .
-   ```
-   *Make sure `$(go env GOPATH)/bin` is in your `$PATH`.*
+**Build and install** (needs Go):
+
+```bash
+make install     # -> ~/.local/bin/incomm  (PREFIX=/usr/local to change it)
+```
+
+*Make sure the `bin` directory is in your `$PATH`.* Or, without `make`: `cd cli && go install .`,
+which puts it in `$(go env GOPATH)/bin`.
 
 ---
 

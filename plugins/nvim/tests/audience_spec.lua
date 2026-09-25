@@ -161,6 +161,35 @@ T.test("the badge gives way when the header line is short of room", function()
   T.eq({ bubble.badge("external", false, 9) }, { {}, 0 })
 end)
 
+T.test("the audience floats to the right edge of the header, name and time stay left", function()
+  for _, width in ipairs({ 80, 60 }) do
+    local rows = bubble.build({
+      author = "user",
+      title = "Jan Tobola",
+      created = "2026-07-17T10:00:00Z",
+      content = "text",
+      width = width,
+      border = "rounded",
+      audience = "agent+external",
+      published = false,
+    })
+    local header = flat(rows[2])
+    T.ok(header:find("^│ Jan Tobola  "), "the name opens the header: " .. header)
+    -- The last word sits against the border, one space of padding away.
+    T.ok(header:find("not published │$"), "the state is at the right edge: " .. header)
+    local name_end = select(2, header:find("Jan Tobola"))
+    local badge_start = header:find("agent + external", 1, true)
+    T.ok(badge_start > name_end + 2, "and there is room between the time and the badge")
+    T.eq(vim.fn.strdisplaywidth(header), width, "the box keeps its width")
+  end
+  -- A plain agent is on the right too.
+  local plain = flat(bubble.build({
+    author = "user", title = "Jan", created = "2026-07-17T10:00:00Z", content = "x",
+    width = 40, border = "rounded", audience = "agent", published = false,
+  })[2])
+  T.ok(plain:find("agent │$"), "the default badge is at the right edge: " .. plain)
+end)
+
 T.test("a badge never changes a bubble's height or breaks its box", function()
   local function build(audience, width, title)
     return bubble.build({

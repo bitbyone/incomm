@@ -156,9 +156,20 @@ function M.build(opts)
     { "  " .. when, "IncommTime" .. suffix },
   }
   local used = vim.fn.strdisplaywidth(name) + 2 + vim.fn.strdisplaywidth(when)
+  -- The audience floats to the right edge: name and time on the left, its state
+  -- against the border. The badge's own two leading spaces are the least gap it
+  -- keeps from the time; the rest of the line is the gap.
   local badge, badge_width = M.badge(opts.audience, opts.published, inner - 2 - used)
-  vim.list_extend(header, badge)
-  boxed(header, used + badge_width)
+  if badge_width > 0 then
+    local right = vim.deepcopy(badge)
+    right[1][1] = right[1][1]:gsub("^%s+", "")
+    local right_width = chunks_width(right)
+    header[#header + 1] = { string.rep(" ", inner - 2 - used - right_width) }
+    vim.list_extend(header, right)
+    boxed(header, inner - 2)
+  else
+    boxed(header, used)
+  end
 
   -- Body, wrapped to the inner width.
   for _, text in ipairs(format.wrap(opts.content, inner - 2)) do

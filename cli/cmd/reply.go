@@ -54,6 +54,11 @@ var replyCmd = &cobra.Command{
 		if note == nil {
 			return noComment(id)
 		}
+		// A reply belongs to its conversation: unless told otherwise it is seen
+		// by the same people as the comment it answers.
+		if !cmd.Flags().Changed("audience") {
+			audience = note.Audience
+		}
 		now := model.NowUTC()
 		reply := model.Reply{
 			ID:          model.NewID(),
@@ -83,7 +88,7 @@ func init() {
 	replyCmd.Flags().StringVarP(&replyContent, "content", "c", "", "reply text (required)")
 	replyCmd.Flags().StringVar(&replyAuthor, "author", model.AuthorAgent, "author: user or agent")
 	replyCmd.Flags().StringVar(&replyAuthorTitle, "author-title", "", "display name (e.g. model name for agent)")
-	replyCmd.Flags().StringVar(&replyAudience, "audience", "", "who may see it: agent (default), external or agent+external")
+	replyCmd.Flags().StringVar(&replyAudience, "audience", "", "who may see it: agent, external or agent+external (default: the same as the comment it answers)")
 	replyCmd.Flags().StringVar(&replySourceURL, "source-url", "", "where the reply came from (metadata)")
 	replyCmd.Flags().Int64Var(&replySourceID, "source-id", 0, "the reply's id on the forge (metadata)")
 	rootCmd.AddCommand(replyCmd)

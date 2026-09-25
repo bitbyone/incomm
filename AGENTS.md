@@ -50,7 +50,11 @@ The plugins and the CLI are **independent builds** that only agree on the shared
   default, and what an absent field means), `external` (meant for the merge request on
   the forge, not shown to the agent) or `agent+external`. It is set per comment, not per
   thread: a thread is as visible as its root, and everything under a `private` root is
-  private. The **CLI shows an agent only what is addressed to it** (`--view agent`, the
+  private. A new reply defaults to its comment's audience (the CLI's `reply` and both
+  editors), so an answer in a conversation shared with the forge is shared too; what a
+  reply stores is fixed when it is written, and changing the root later never rewrites it -
+  under a `private` root the editors merely *show* every reply as private, and show each
+  one's own audience again when the root changes back. The **CLI shows an agent only what is addressed to it** (`--view agent`, the
   default); `private` is in no CLI view. Editor plugins read the JSON directly and show
   everything. This hides comments from a cooperating agent, it is not access control: the
   file is readable by anyone with the checkout.
@@ -155,7 +159,7 @@ any compatible editor/UI integration.
 | `list [--file F] [--unresolved] [--json]` | List comments (re-anchors first). `--json` → `{ "notes": [Note,…] }`. |
 | `show <id> [--json]` | One comment + its full thread. |
 | `add -f FILE -l N\|N:M -c TEXT [--author user\|agent] [--author-title T] [--audience A] [--source-url U --source-id N --source-thread T]` | New comment on a line/range. `--author` defaults to `agent`. `--author-title` sets the display name (mandatory for `user`; optional for `agent`, e.g. model name). `--audience` is `agent` (default, written out as `"agent"`), `external` or `agent+external`; `private` is refused (made in the editor). |
-| `reply <id> -c TEXT [--author …] [--author-title T] [--audience A] [--source-url U --source-id N]` | Reply to a thread. Defaults to `agent`. |
+| `reply <id> -c TEXT [--author …] [--author-title T] [--audience A] [--source-url U --source-id N]` | Reply to a thread. `--author` defaults to `agent`; `--audience` defaults to the audience of the comment it answers. |
 | `resolve <id>` / `unresolve <id>` | Mark done / reopen. |
 | `rm <id>` | Delete one comment. Refused when it has replies the view cannot see. |
 | `clear` | Delete every comment **in the view** for the current branch; anything outside it, or with hidden replies, stays. The file goes when nothing is left. |

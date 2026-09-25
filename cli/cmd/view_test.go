@@ -377,3 +377,36 @@ func TestVersionReportsTheFormat(t *testing.T) {
 		t.Errorf("output: %s", printed)
 	}
 }
+
+func TestAReplyInheritsTheAudienceOfItsComment(t *testing.T) {
+	root, st := viewFixture(t)
+	// dddd0004 is agent+external; aaaa0001 is the default.
+	if _, err := runCLI(t, "--root", root, "reply", "dddd0004", "-c", "inherits"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runCLI(t, "--root", root, "reply", "dddd0004", "-c", "overrides", "--audience", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runCLI(t, "--root", root, "reply", "aaaa0001", "-c", "plain"); err != nil {
+		t.Fatal(err)
+	}
+	nf, _ := st.Load()
+	audienceOf := func(id, content string) string {
+		for _, r := range nf.Find(id).Replies {
+			if r.Content == content {
+				return r.Audience
+			}
+		}
+		t.Fatalf("no reply %q", content)
+		return ""
+	}
+	if got := audienceOf("dddd0004", "inherits"); got != model.AudienceBoth {
+		t.Errorf("a reply under an agent+external comment is %q, want agent+external", got)
+	}
+	if got := audienceOf("dddd0004", "overrides"); got != model.AudienceAgent {
+		t.Errorf("an explicit audience wins, got %q", got)
+	}
+	if got := audienceOf("aaaa0001", "plain"); got != model.AudienceAgent {
+		t.Errorf("a reply under a default comment is %q, want agent", got)
+	}
+}

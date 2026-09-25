@@ -7,6 +7,7 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import one.bitby.incomm.model.AUTHOR_AGENT
+import one.bitby.incomm.model.AUDIENCE_AGENT
 import one.bitby.incomm.model.AUTHOR_USER
 import one.bitby.incomm.model.Audience
 import one.bitby.incomm.model.Source
@@ -115,15 +116,16 @@ object ThreadUi {
         )
 
     /**
-     * Who may see a comment, as HTML for the end of the author line, or "" for a
-     * plain agent comment. It lives in the label the bubble already has, so a
-     * bubble is exactly as tall with it as without it.
+     * Who may see a comment, as HTML for the end of the author line. Every comment
+     * has one; a plain agent comment's is dim and not bold, since it is the
+     * default. It lives in the label the bubble already has, so a bubble is
+     * exactly as tall with it as without it.
      */
     fun audienceBadgeHtml(effective: String, source: Source?): String {
-        if (Audience.badge(source, effective) == null) return ""
         val audience = Audience.normalize(effective)
+        val text = escape(Audience.label(audience))
         val head = "&nbsp;&nbsp;<font color='${hex(IncommColors.audienceBadge(audience))}'>" +
-            "<b>${escape(Audience.label(audience))}</b></font>"
+            (if (audience == AUDIENCE_AGENT) text else "<b>$text</b>") + "</font>"
         if (!Audience.includesExternal(audience)) return head
         val published = source != null
         val color = if (published) IncommColors.publishedBadge else IncommColors.notPublishedBadge

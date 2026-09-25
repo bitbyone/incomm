@@ -108,6 +108,20 @@ class NotesStoreTest {
     }
 
     @Test
+    fun savingWritesTheDefaultAudienceOnEveryNoteAndReply() {
+        val (store, target) = storeWith("notes.sample.json", "explicit")
+        val loaded = store.load()
+        // The v1 fixture has no audience anywhere; it is read as agent...
+        assertTrue(loaded.notes.all { it.audience == "agent" && it.replies.all { r -> r.audience == "agent" } })
+
+        store.save(loaded)
+        // ...and now says so in the file: one field per note and per reply.
+        val text = target.readText()
+        val replies = loaded.notes.sumOf { it.replies.size }
+        assertEquals(loaded.notes.size + replies, Regex("\"audience\": \"agent\"").findAll(text).count())
+    }
+
+    @Test
     fun aV2FileRoundTripsAudienceAndSource() {
         val (store, target) = storeWith("notes.v2.sample.json", "v2")
         val loaded = store.load()
@@ -115,7 +129,8 @@ class NotesStoreTest {
         assertEquals("agent+external", imported.audience)
         assertEquals(501L, imported.source!!.id)
         assertEquals("9f8e7d6c5b4a", imported.source!!.thread)
-        assertNull(loaded.find("a1000001")!!.audience)
+        // The fixture leaves it out; absent is read as agent.
+        assertEquals("agent", loaded.find("a1000001")!!.audience)
         assertEquals("external", loaded.find("a1000001")!!.replies[0].audience)
 
         store.save(loaded)
@@ -124,8 +139,9 @@ class NotesStoreTest {
         assertEquals(502L, again.find("a1000002")!!.replies[0].source!!.id)
         assertEquals("private", again.find("a1000003")!!.audience)
         assertEquals("agent", again.find("a1000003")!!.replies[0].audience)
-        // Unset audience and source stay out of the JSON altogether.
         val text = target.readText()
+        // The default is written out, not left for the reader to guess; an unset source stays out.
+        assertTrue(text.substringAfter("\"a1000001\"").substringBefore("\"a1000002\"").contains("\"audience\": \"agent\""))
         assertFalse(text.substringAfter("\"a1000001\"").substringBefore("\"a1000002\"").contains("\"source\""))
     }
 

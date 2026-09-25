@@ -35,7 +35,7 @@ class AudienceTest {
 
     @Test
     fun `the default is stored as absent`() {
-        assertNull(Audience.stored(AUDIENCE_AGENT))
+        assertEquals(AUDIENCE_AGENT, Audience.stored(AUDIENCE_AGENT))
         assertEquals(AUDIENCE_BOTH, Audience.stored(AUDIENCE_BOTH))
         assertEquals(AUDIENCE_PRIVATE, Audience.stored(AUDIENCE_PRIVATE))
     }
@@ -63,8 +63,9 @@ class AudienceTest {
     }
 
     @Test
-    fun `the badge is empty for a plain agent comment and says whether anything external was published`() {
-        assertNull(Audience.badge(null, AUDIENCE_AGENT))
+    fun `every comment has a badge, and one that includes external says whether it was published`() {
+        assertEquals("agent", Audience.badge(null, AUDIENCE_AGENT))
+        assertEquals("agent", Audience.badge(Source(id = 1), AUDIENCE_AGENT))
         assertEquals("private", Audience.badge(null, AUDIENCE_PRIVATE))
         assertEquals("private", Audience.badge(Source(id = 1), AUDIENCE_PRIVATE))
         assertEquals("external · not published", Audience.badge(null, AUDIENCE_EXTERNAL))

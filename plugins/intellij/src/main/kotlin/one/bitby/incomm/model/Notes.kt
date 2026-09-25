@@ -57,7 +57,7 @@ data class Note(
     var orphaned: Boolean = false,
     var author: String = AUTHOR_USER,
     var authorTitle: String? = null,
-    var audience: String? = null,
+    var audience: String? = AUDIENCE_AGENT,
     var source: Source? = null,
     var createdAt: String = "",
     var updatedAt: String = "",
@@ -71,7 +71,7 @@ data class Note(
         if (content == null) content = ""
         if (file == null) file = ""
         if (id == null) id = ""
-        if (audience.isNullOrBlank()) audience = null
+        if (audience.isNullOrBlank()) audience = AUDIENCE_AGENT
         replies.forEach { it.normalize() }
     }
 
@@ -125,13 +125,13 @@ data class Reply(
     var id: String = "",
     var author: String = AUTHOR_AGENT,
     var authorTitle: String? = null,
-    var audience: String? = null,
+    var audience: String? = AUDIENCE_AGENT,
     var source: Source? = null,
     var content: String = "",
     var createdAt: String = "",
 ) {
     fun normalize() {
-        if (audience.isNullOrBlank()) audience = null
+        if (audience.isNullOrBlank()) audience = AUDIENCE_AGENT
     }
 
     fun deepCopy(): Reply = copy(source = source?.copy())

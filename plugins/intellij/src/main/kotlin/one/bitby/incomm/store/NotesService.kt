@@ -272,7 +272,7 @@ class NotesService(private val project: Project) : Disposable {
 
     /**
      * Change who may see a comment: the thread's first comment, or one reply when
-     * [replyId] is given. The default audience is stored as absent. Refused while
+     * [replyId] is given. The default is stored explicitly too. Refused while
      * the notes file is in a newer format, and for an unknown reply or audience.
      */
     fun setAudience(noteId: String, replyId: String?, audience: String): Boolean {

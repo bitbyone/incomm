@@ -222,14 +222,14 @@ class NotesServiceTest : BasePlatformTestCase() {
 
         // The default is stored as absent, and unknown targets or values are refused.
         assertTrue(service.setAudience(note.id, null, "agent"))
-        assertNull(service.find(note.id)!!.audience)
+        assertEquals("agent", service.find(note.id)!!.audience)
         assertFalse(service.setAudience(note.id, "nope", "external"))
         assertFalse(service.setAudience("missing", null, "external"))
         assertFalse(service.setAudience(note.id, null, "team"))
 
         service.flushWrites()
         val onDisk = NotesStore(Paths.get(project.basePath!!), "").load().find(note.id)!!
-        assertNull(onDisk.audience)
+        assertEquals("agent", onDisk.audience)
         assertEquals("private", onDisk.replies[0].audience)
     }
 }

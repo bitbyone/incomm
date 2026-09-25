@@ -9,8 +9,10 @@ const val AUDIENCE_BOTH = "agent+external"
  * Who may see a comment, as the editor shows and changes it. Pure logic, so it is
  * unit-testable without an IDE; mirrors `model.EffectiveAudience` in the CLI.
  *
- * A comment stores `null` for the default (`agent`). A value this build does not
- * know is treated as `private`, so a newer audience is never shown as shared.
+ * A comment stores its audience explicitly, `agent` included, so a saved file
+ * always says who may see each comment; a file that does not say (an older one)
+ * is read as `agent`. A value this build does not know is treated as `private`,
+ * so a newer audience is never shown as shared.
  */
 object Audience {
 
@@ -27,8 +29,8 @@ object Audience {
     /** What the toggle changes [current] to. */
     fun next(current: String?): String = CYCLE[(CYCLE.indexOf(normalize(current)) + 1) % CYCLE.size]
 
-    /** What to store for [audience]: the default is left out of the file. */
-    fun stored(audience: String): String? = normalize(audience).takeIf { it != AUDIENCE_AGENT }
+    /** What to store for [audience]: always the value itself, the default included. */
+    fun stored(audience: String): String = normalize(audience)
 
     /**
      * The audience a comment really has: everything under a `private` root is
@@ -51,13 +53,12 @@ object Audience {
     }
 
     /**
-     * The compact text shown in a bubble's header, or null for a plain `agent`
-     * comment. Anything that includes `external` also says whether it has been
-     * published, which is whether it has a [source].
+     * The compact text shown in a bubble's header: every comment says who may
+     * see it, plain `agent` included. Anything that includes `external` also says
+     * whether it has been published, which is whether it has a [source].
      */
-    fun badge(source: Source?, effective: String): String? {
+    fun badge(source: Source?, effective: String): String {
         val audience = normalize(effective)
-        if (audience == AUDIENCE_AGENT) return null
         if (!includesExternal(audience)) return label(audience)
         return label(audience) + " · " + publication(source)
     }

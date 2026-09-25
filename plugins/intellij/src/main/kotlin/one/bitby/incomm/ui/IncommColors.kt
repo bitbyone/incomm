@@ -6,6 +6,7 @@ import com.intellij.ui.ColorUtil
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import one.bitby.incomm.model.AUDIENCE_AGENT
 import one.bitby.incomm.model.AUDIENCE_PRIVATE
 import one.bitby.incomm.model.AUTHOR_AGENT
 import one.bitby.incomm.model.Audience
@@ -99,9 +100,13 @@ object IncommColors {
      * readable on a tinted bubble in any theme.
      */
     fun audienceBadge(audience: String): Color = when (Audience.normalize(audience)) {
+        AUDIENCE_AGENT -> agentBadge
         AUDIENCE_PRIVATE -> muted
         else -> readable(JBUI.CurrentTheme.Banner.WARNING_BORDER_COLOR)
     }
+
+    /** The plain `agent` badge: the state every comment has, so quieter than any other. */
+    val agentBadge: Color get() = ColorUtil.mix(muted, UIUtil.getLabelBackground(), 0.45)
 
     val publishedBadge: Color get() = readable(JBUI.CurrentTheme.Banner.SUCCESS_BORDER_COLOR)
     val notPublishedBadge: Color get() = readable(JBUI.CurrentTheme.Banner.WARNING_BORDER_COLOR)

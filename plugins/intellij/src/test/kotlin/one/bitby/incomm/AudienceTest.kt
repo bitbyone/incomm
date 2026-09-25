@@ -83,4 +83,25 @@ class AudienceTest {
             Audience.tooltip(AUDIENCE_BOTH, AUDIENCE_PRIVATE),
         )
     }
+
+    @Test
+    fun `a new reply starts with the audience of its root`() {
+        assertEquals(AUDIENCE_BOTH, Audience.inheritedByReply(AUDIENCE_BOTH))
+        assertEquals(AUDIENCE_EXTERNAL, Audience.inheritedByReply(AUDIENCE_EXTERNAL))
+        assertEquals(AUDIENCE_PRIVATE, Audience.inheritedByReply(AUDIENCE_PRIVATE))
+        assertEquals(AUDIENCE_AGENT, Audience.inheritedByReply(AUDIENCE_AGENT))
+        assertEquals("a root that says nothing is agent", AUDIENCE_AGENT, Audience.inheritedByReply(null))
+        assertEquals(AUDIENCE_AGENT, Audience.inheritedByReply(""))
+    }
+
+    @Test
+    fun `a private root shows every reply as private and restoring gives their own back`() {
+        val stored = listOf(AUDIENCE_AGENT, AUDIENCE_BOTH, AUDIENCE_EXTERNAL, AUDIENCE_PRIVATE, null)
+        for (own in stored) {
+            assertEquals("under a private root", AUDIENCE_PRIVATE, Audience.effective(AUDIENCE_PRIVATE, own))
+            // Nothing was rewritten, so a root that is no longer private restores each one.
+            assertEquals(Audience.normalize(own), Audience.effective(AUDIENCE_BOTH, own))
+            assertEquals(Audience.normalize(own), Audience.effective(AUDIENCE_AGENT, own))
+        }
+    }
 }

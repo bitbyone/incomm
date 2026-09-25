@@ -245,9 +245,18 @@ class NotesService(private val project: Project) : Disposable {
         it.updatedAt = nowUtc()
     }
 
+    /**
+     * A new reply starts with the audience its root comment has now, stored
+     * explicitly; changing the root later never rewrites replies that exist.
+     */
     fun addReply(id: String, content: String, author: String, authorTitle: String? = null) = mutate(id) {
         val title = authorTitle ?: defaultAuthorTitle(author)
-        it.replies.add(Reply(id = newId(), author = author, authorTitle = title, content = content, createdAt = nowUtc()))
+        it.replies.add(
+            Reply(
+                id = newId(), author = author, authorTitle = title, audience = Audience.inheritedByReply(it.audience),
+                content = content, createdAt = nowUtc(),
+            ),
+        )
         it.updatedAt = nowUtc()
     }
 

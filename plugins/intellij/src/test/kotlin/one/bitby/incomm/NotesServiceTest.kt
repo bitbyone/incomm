@@ -232,4 +232,20 @@ class NotesServiceTest : BasePlatformTestCase() {
         assertEquals("agent", onDisk.audience)
         assertEquals("private", onDisk.replies[0].audience)
     }
+
+    fun testANewReplyInheritsTheAudienceOfItsRootAndChangingTheRootLeavesOldRepliesAlone() {
+        val service = NotesService.getInstance(project)
+        val note = service.addNote("f.txt", 1, 1, "c", AUTHOR_USER, listOf("a"))
+        service.addReply(note.id, "under the default root", AUTHOR_USER)
+        assertEquals("agent", service.find(note.id)!!.replies[0].audience)
+
+        for (audience in listOf("agent+external", "external", "private")) {
+            assertTrue(service.setAudience(note.id, null, audience))
+            service.addReply(note.id, "under $audience", AUTHOR_AGENT)
+            assertEquals(audience, service.find(note.id)!!.replies.last().audience)
+        }
+
+        // Nothing that already existed was rewritten by the root changing.
+        assertEquals(listOf("agent", "agent+external", "external", "private"), service.find(note.id)!!.replies.map { it.audience })
+    }
 }

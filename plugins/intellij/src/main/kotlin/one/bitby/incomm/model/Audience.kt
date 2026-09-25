@@ -30,7 +30,10 @@ object Audience {
     fun next(current: String?): String = CYCLE[(CYCLE.indexOf(normalize(current)) + 1) % CYCLE.size]
 
     /** What to store for [audience]: always the value itself, the default included. */
-    fun stored(audience: String): String = normalize(audience)
+    fun stored(audience: String?): String = normalize(audience)
+
+    /** What a new reply starts with: the audience its root comment stores now. */
+    fun inheritedByReply(root: String?): String = stored(root)
 
     /**
      * The audience a comment really has: everything under a `private` root is

@@ -183,8 +183,8 @@ function Service:all_notes()
 end
 
 --- Set who may see one comment: the thread's own (`reply_id` nil) or a reply.
---- The default audience is stored as absent, so the file stays what the CLI
---- would have written.
+--- The default audience is stored as `agent`, like any other, so the file stays
+--- what the CLI would have written.
 ---@param note_id string
 ---@param reply_id string? nil for the thread's first comment
 ---@param audience string private | agent | external | agent+external
@@ -558,6 +558,7 @@ function Service:add_note(rel, start_line, end_line, content, author, author_tit
     orphaned = false,
     author = author,
     authorTitle = author_title or (author == model.AUTHOR_USER and self:default_author_title() or nil),
+    audience = model.AUDIENCE_AGENT,
     createdAt = now,
     updatedAt = now,
     replies = {},
@@ -587,6 +588,7 @@ function Service:add_reply(id, content, author, author_title)
       id = model.new_id(),
       author = author,
       authorTitle = author_title or (author == model.AUTHOR_USER and self:default_author_title() or nil),
+      audience = model.AUDIENCE_AGENT,
       content = content,
       createdAt = model.now_utc(),
     })

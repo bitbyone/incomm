@@ -37,7 +37,7 @@ M.AUTHOR_AGENT = "agent"
 ---@field id string
 ---@field author string
 ---@field authorTitle? string
----@field audience? string private | agent | external | agent+external; nil is agent
+---@field audience? string private | agent | external | agent+external; absent in a file is agent
 ---@field source? incomm.Source
 ---@field content string
 ---@field createdAt string
@@ -53,7 +53,7 @@ M.AUTHOR_AGENT = "agent"
 ---@field orphaned boolean
 ---@field author string
 ---@field authorTitle? string
----@field audience? string private | agent | external | agent+external; nil is agent
+---@field audience? string private | agent | external | agent+external; absent in a file is agent
 ---@field source? incomm.Source
 ---@field createdAt string
 ---@field updatedAt string
@@ -109,8 +109,10 @@ function M.normalize(f)
     if note.authorTitle == vim.NIL then
       note.authorTitle = nil
     end
-    if note.audience == vim.NIL then
-      note.audience = nil
+    -- An absent audience is the default, agent. It is written out, so the state
+    -- is always there to read in the file; unknown values are left as they are.
+    if note.audience == nil or note.audience == "" or note.audience == vim.NIL then
+      note.audience = M.AUDIENCE_AGENT
     end
     if note.source == vim.NIL then
       note.source = nil
@@ -132,8 +134,8 @@ function M.normalize(f)
       if reply.authorTitle == vim.NIL then
         reply.authorTitle = nil
       end
-      if reply.audience == vim.NIL then
-        reply.audience = nil
+      if reply.audience == nil or reply.audience == "" or reply.audience == vim.NIL then
+        reply.audience = M.AUDIENCE_AGENT
       end
       if reply.source == vim.NIL then
         reply.source = nil
@@ -252,13 +254,12 @@ function M.is_published(comment)
   return type(source) == "table" and (source.id ~= nil or (source.url ~= nil and source.url ~= ""))
 end
 
---- The form an audience is written in: the default is left out of the file, so
---- what this plugin writes stays byte-identical to what the CLI writes.
+--- The form an audience is written in. The default is written out too, exactly
+--- as the CLI writes it, so what this plugin saves stays byte-identical to it.
 ---@param audience string
----@return string?
+---@return string
 function M.stored_audience(audience)
-  local a = M.normalize_audience(audience)
-  return a ~= M.AUDIENCE_AGENT and a or nil
+  return M.normalize_audience(audience)
 end
 
 ---@generic T

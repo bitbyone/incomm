@@ -366,8 +366,9 @@ T.test("nothing inside a bubble is painted with a background group", function()
         local group = chunk[2]
         if group then
           T.ok(
-            group:match("^IncommBorder") or group:match("^IncommName") or group:match("^IncommTime") or group:match("^IncommText"),
-            "row " .. i .. " uses " .. group .. ", which should be a border or a text group"
+            group:match("^IncommBorder") or group:match("^IncommName") or group:match("^IncommTime") or group:match("^IncommText")
+              or group:match("^IncommBadge"),
+            "row " .. i .. " uses " .. group .. ", which should be a border, a text or a badge group"
           )
         end
       end

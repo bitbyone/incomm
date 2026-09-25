@@ -94,7 +94,7 @@ T.test("an absent audience is agent and an unknown one is private", function()
   T.eq(model.normalize_audience(nil), "agent")
   T.eq(model.normalize_audience(vim.NIL), "agent")
   T.eq(model.normalize_audience("team"), "private", "a value from the future is never shown")
-  T.eq(model.stored_audience("agent"), nil, "the default is left out of the file")
+  T.eq(model.stored_audience("agent"), "agent", "the default is written out like any other value")
   T.eq(model.stored_audience("external"), "external")
 end)
 
@@ -131,8 +131,11 @@ end)
 
 -- ---- the badge -----------------------------------------------------------------
 
-T.test("plain agent has no badge; the others name themselves and their state", function()
-  T.eq({ bubble.badge("agent", false, 80) }, { {}, 0 })
+T.test("plain agent is drawn too, dimmer; the others name themselves and their state", function()
+  local plain = bubble.badge("agent", false, 80)
+  T.eq(flat(plain), "  agent")
+  T.eq(plain[1][2], "IncommBadgeAgent", "the default is the quietest badge")
+  T.eq({ bubble.badge("agent", false, 3) }, { {}, 0 }, "and it gives way like the rest")
 
   local chunks = bubble.badge("agent+external", false, 80)
   T.eq(flat(chunks), "  agent + external · not published")
@@ -221,13 +224,13 @@ T.test("a card draws the badge on each comment, and a private root makes its rep
       end
     end
     T.eq(privates, 2, "the root and its reply, though the reply stores nothing")
-    T.eq(svc:find(note.id).replies[1].audience, nil, "the reply's stored audience is untouched")
+    T.eq(svc:find(note.id).replies[1].audience, "agent", "the reply's stored audience is untouched")
   end)
 end)
 
 -- ---- the service ---------------------------------------------------------------
 
-T.test("set_audience stores the default as absent and never changes what it was not asked to", function()
+T.test("set_audience stores the default as agent and never changes what it was not asked to", function()
   T.with_tmpdir(function(dir)
     local _, svc = open_fixture(dir)
     local note = svc:add_note("src/main.go", 4, 4, "root")
@@ -236,7 +239,7 @@ T.test("set_audience stores the default as absent and never changes what it was 
 
     T.ok(svc:set_audience(note.id, nil, "external"))
     T.eq(svc:find(note.id).audience, "external")
-    T.eq(svc:find(note.id).replies[1].audience, nil, "the reply is its own comment")
+    T.eq(svc:find(note.id).replies[1].audience, "agent", "the reply is its own comment")
     T.ok(svc.store:read_raw():find('"audience": "external"', 1, true), "on disk")
 
     T.ok(svc:set_audience(note.id, reply_id, "agent+external"))
@@ -244,14 +247,14 @@ T.test("set_audience stores the default as absent and never changes what it was 
     T.eq(svc:find(note.id).audience, "external")
 
     T.ok(svc:set_audience(note.id, nil, "agent"))
-    T.eq(svc:find(note.id).audience, nil, "agent is stored as absent")
-    T.ok(not svc.store:read_raw():find('"audience": "agent"', 1, true), "and not written")
+    T.eq(svc:find(note.id).audience, "agent", "agent is stored as agent")
+    T.ok(svc.store:read_raw():find('"audience": "agent"', 1, true), "and written like any other value")
 
     T.ok(not svc:set_audience(note.id, nil, "team"), "an unknown audience is refused")
     T.ok(not svc:set_audience(note.id, nil, ""), "so is an empty one")
     T.ok(not svc:set_audience(note.id, "nosuchreply", "external"), "and a reply that is not there")
     T.ok(not svc:set_audience("nosuchnote", nil, "external"))
-    T.eq(svc:find(note.id).audience, nil)
+    T.eq(svc:find(note.id).audience, "agent")
     T.eq(svc:find(note.id).replies[1].audience, "agent+external")
   end)
 end)
@@ -274,9 +277,9 @@ T.test("set_thread_audience moves every comment in one write", function()
     T.eq(after.audience, "agent+external")
     T.eq({ after.replies[1].audience, after.replies[2].audience }, { "agent+external", "agent+external" })
     T.ok(svc:set_thread_audience(note.id, "agent"))
-    T.eq(after.audience, nil, "agent is stored as absent, on every comment")
-    T.eq(after.replies[1].audience, nil)
-    T.eq(after.replies[2].audience, nil)
+    T.eq(after.audience, "agent", "agent is stored as agent, on every comment")
+    T.eq(after.replies[1].audience, "agent")
+    T.eq(after.replies[2].audience, "agent")
   end)
 end)
 
@@ -378,12 +381,12 @@ T.test(":Incomm audience steps a one-comment thread round the cycle without a pi
       local seen = {}
       for _ = 1, 4 do
         vim.cmd("Incomm audience")
-        seen[#seen + 1] = svc:find(note.id).audience or "agent"
+        seen[#seen + 1] = svc:find(note.id).audience
       end
       T.eq(seen, { "agent+external", "external", "private", "agent" })
       T.ok(notes[1]:find("agent + external", 1, true), "it says what it did: " .. notes[1])
     end)
-    T.eq(svc:find(note.id).audience, nil)
+    T.eq(svc:find(note.id).audience, "agent")
   end)
 end)
 
@@ -435,7 +438,7 @@ T.test("with replies the picker lists the comments, and only the chosen one move
       T.eq(items[3].label, "whole thread")
     end)
     T.eq(svc:find(note.id).replies[1].audience, "agent+external", "the reply moved one step")
-    T.eq(svc:find(note.id).audience, nil, "the root did not")
+    T.eq(svc:find(note.id).audience, "agent", "the root did not")
     T.eq(svc:find(note.id).replies[1].id, reply_id)
 
     -- The root can be chosen too, and cancelling changes nothing.

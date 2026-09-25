@@ -150,6 +150,11 @@ T.test("a v1 file loads and is stamped with the current version on save", functi
     s:save(f)
     T.eq(s:load().version, model.SCHEMA_VERSION)
     T.ok(s:read_raw():find('"version": 2', 1, true), "the file says version 2")
+    local raw = s:read_raw()
+    local _, agents = raw:gsub('"audience": "agent"', "")
+    local _, replies = raw:gsub('"replies": %[\n', "")
+    T.ok(agents >= 3, "every note of the old file gains its default audience, and so does its reply: " .. agents)
+    T.eq(s:load().notes[1].replies[1].audience, "agent")
   end)
 end)
 
@@ -162,14 +167,20 @@ T.test("a v2 file round-trips audience and source byte for byte", function()
     T.eq(f.notes[2].source.id, 501)
     T.eq(f.notes[2].replies[1].source.thread, nil)
     T.eq(f.notes[3].audience, "private")
-    T.eq(f.notes[1].audience, nil, "an absent audience stays absent")
+    T.eq(f.notes[1].audience, "agent", "an absent audience is read as agent")
     -- The fixture has no branch field and writes `&`, `<` and `>` raw, where Go
-    -- (and so this encoder) escapes them; a save stamps the branch, escapes those
-    -- three and changes nothing else.
+    -- (and so this encoder) escapes them, and its first note has no audience; a
+    -- save stamps the branch, escapes those three, writes that note's default
+    -- audience out and changes nothing else.
     s:save(f)
     local want = before:gsub('"version": 2,\n', '"version": 2,\n  "branch": "main",\n', 1)
     want = want:gsub("Reviewer & Co <r@example.com>", "Reviewer \\u0026 Co \\u003cr@example.com\\u003e", 1)
     want = want:gsub("note_501&x=1", "note_501\\u0026x=1", 1)
+    local title = '"authorTitle": "Jan Tobola",\n      "createdAt": "2026-07-17T10:00:00Z"'
+    local at = want:find(title, 1, true)
+    T.ok(at, "the fixture's first note has no audience")
+    local put = '"authorTitle": "Jan Tobola",\n      "audience": "agent",\n      "createdAt": "2026-07-17T10:00:00Z"'
+    want = want:sub(1, at - 1) .. put .. want:sub(at + #title)
     T.eq(s:read_raw(), want)
   end)
 end)

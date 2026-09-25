@@ -149,6 +149,8 @@ local function derive()
   -- The audience badge sits in the header beside the timestamp, so it is as
   -- quiet as the timestamp; only the state word and "private" carry a hue.
   vim.api.nvim_set_hl(0, "IncommBadge", { fg = blend(muted, surface, keep - 0.05), italic = muted_italic })
+  -- Plain agent is the default and says nothing new, so it is dimmer still.
+  vim.api.nvim_set_hl(0, "IncommBadgeAgent", { fg = blend(muted, surface, keep - 0.25), italic = muted_italic })
   for badge, base in pairs({
     Pending = "IncommAudiencePending",
     Published = "IncommAudiencePublished",

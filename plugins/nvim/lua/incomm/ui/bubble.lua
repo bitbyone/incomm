@@ -46,7 +46,7 @@ end
 ---@field width integer total width of the box, borders included
 ---@field indent integer? leading spaces (replies are nested)
 ---@field border string|string[]|false
----@field audience string? the comment's EFFECTIVE audience; nothing is drawn for plain agent
+---@field audience string? the comment's EFFECTIVE audience; plain agent is drawn too, dimmer than the rest
 ---@field published boolean? whether the comment records where it went on the forge
 
 ---@param chunks table[]
@@ -63,18 +63,18 @@ end
 --- chunks, plus the display width they take. It lives in the header line that
 --- is already there, so a bubble is never taller for having one, and it gives
 --- way when the line is short of room: the state word goes first, then "agent +"
---- shrinks to "+", then the whole badge.
+--- shrinks to "+", then the whole badge. Plain agent is the default, so it is
+--- drawn dimmer than the states that ask for something.
 ---@param audience string? effective audience
 ---@param published boolean? whether it has a source
 ---@param room integer display cells left on the header line
 ---@return table[] chunks, integer used
 function M.badge(audience, published, room)
   local a = model.normalize_audience(audience)
-  if a == model.AUDIENCE_AGENT then
-    return {}, 0
-  end
   local candidates
-  if a == model.AUDIENCE_PRIVATE then
+  if a == model.AUDIENCE_AGENT then
+    candidates = { { { "  agent", "IncommBadgeAgent" } } }
+  elseif a == model.AUDIENCE_PRIVATE then
     candidates = { { { "  private", "IncommBadgePrivate" } } }
   else
     local label = a == model.AUDIENCE_BOTH and "agent + external" or a

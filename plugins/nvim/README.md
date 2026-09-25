@@ -259,7 +259,7 @@ comment, not to the thread:
 
 | Audience | Meaning |
 |---|---|
-| `agent` | The agent working in the checkout. The default; a comment with none is this. |
+| `agent` | The agent working in the checkout. The default: it is written out (`"audience": "agent"`) on every comment and reply, and a comment from an older file that has none is read as this. |
 | `agent+external` | The agent works on it, and it belongs on the merge request. |
 | `external` | Meant for the merge request, and not shown to the agent. |
 | `private` | You only. The CLI never returns it, in any view. |
@@ -272,9 +272,9 @@ and it does not ask when there is only one. `:Incomm audience private` goes
 straight to a named audience. In the explorer the same flow is on `a`, so you can
 mark comments while you browse them. There is no default keymap.
 
-A bubble says so in its header line, next to the time, when it is anything but
-plain `agent`: `agent + external · not published`, `external · published`,
-`private`. The state word appears for what belongs on the merge request:
+A bubble says so in its header line, next to the time, always: a dim `agent` for
+the default, and `agent + external · not published`, `external · published` or
+`private` for the rest. The state word appears for what belongs on the merge request:
 *published* once the comment records where it went (its `source`), *not
 published* until then. It sits in the line the bubble already has, so a card is
 never taller for it, and it gets shorter (`+external`, then nothing) when the

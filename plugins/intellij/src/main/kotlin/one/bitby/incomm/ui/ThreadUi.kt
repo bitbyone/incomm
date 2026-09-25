@@ -8,6 +8,8 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import one.bitby.incomm.model.AUTHOR_AGENT
 import one.bitby.incomm.model.AUTHOR_USER
+import one.bitby.incomm.model.Audience
+import one.bitby.incomm.model.Source
 import one.bitby.incomm.settings.IncommSettings
 import java.awt.Color
 import java.awt.Cursor
@@ -106,11 +108,31 @@ object ThreadUi {
     }
 
     /** Coloured author name plus a muted subtitle (timestamp / location). */
-    fun authorLabel(author: String, subtitle: String, authorTitle: String? = null): JBLabel =
+    fun authorLabel(author: String, subtitle: String, authorTitle: String? = null, badge: String = ""): JBLabel =
         JBLabel(
             "<html><b><font color='${hex(accent(author))}'>${escape(label(author, authorTitle))}</font></b>" +
-                "&nbsp;&nbsp;<font color='${hex(IncommColors.muted)}'>${escape(subtitle)}</font></html>"
+                "&nbsp;&nbsp;<font color='${hex(IncommColors.muted)}'>${escape(subtitle)}</font>$badge</html>"
         )
+
+    /**
+     * Who may see a comment, as HTML for the end of the author line, or "" for a
+     * plain agent comment. It lives in the label the bubble already has, so a
+     * bubble is exactly as tall with it as without it.
+     */
+    fun audienceBadgeHtml(effective: String, source: Source?): String {
+        if (Audience.badge(source, effective) == null) return ""
+        val audience = Audience.normalize(effective)
+        val head = "&nbsp;&nbsp;<font color='${hex(IncommColors.audienceBadge(audience))}'>" +
+            "<b>${escape(Audience.label(audience))}</b></font>"
+        if (!Audience.includesExternal(audience)) return head
+        val published = source != null
+        val color = if (published) IncommColors.publishedBadge else IncommColors.notPublishedBadge
+        return head + "&nbsp;<font color='${hex(color)}'>\u00b7 ${escape(Audience.publication(source))}</font>"
+    }
+
+    /** The per-comment control that steps a comment's audience. */
+    fun audienceButton(stored: String?, effective: String, onClick: () -> Unit): InplaceButton =
+        iconButton(IncommIcons.AUDIENCE, Audience.tooltip(stored, effective), onClick)
 
     fun iconButton(icon: Icon, tooltip: String, onClick: () -> Unit): InplaceButton {
         val button = InplaceButton(IconButton(tooltip, icon, icon), ActionListener { onClick() })

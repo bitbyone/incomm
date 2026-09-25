@@ -4,11 +4,14 @@ import one.bitby.incomm.model.AUTHOR_AGENT
 import one.bitby.incomm.model.AUTHOR_USER
 import one.bitby.incomm.model.Note
 import one.bitby.incomm.model.NotesFile
+import one.bitby.incomm.model.SCHEMA_VERSION
+import one.bitby.incomm.store.IncompatibleFormatException
 import one.bitby.incomm.store.NotesStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -67,6 +70,63 @@ class NotesStoreTest {
 
         assertTrue(store.clear())
         assertFalse(File(root, ".incomm/notes.json").exists())
+    }
+
+    private fun storeWith(fixture: String, name: String): Pair<NotesStore, File> {
+        val root = tmp.newFolder(name)
+        File(root, ".incomm").mkdirs()
+        val target = File(root, ".incomm/notes.json")
+        target.writeText(File(AnchoringTest.fixturesDir("."), fixture).readText())
+        return NotesStore(root.toPath()) to target
+    }
+
+    @Test
+    fun aNewerFormatIsRefusedEvenWhenItsShapeIsUnreadable() {
+        // notes.future.json has a "notes" object where an array is expected, so a
+        // plain decode would fail: it must still be reported as a version problem.
+        val (store, target) = storeWith("notes.future.json", "future")
+        val before = target.readText()
+
+        val e = assertThrows(IncompatibleFormatException::class.java) { store.load() }
+        assertEquals(99, e.found)
+        assertEquals(SCHEMA_VERSION, e.supported)
+        assertTrue(e.message!!.contains(".incomm/notes.json is format v99"))
+        assertTrue(e.message!!.contains("understands up to v2"))
+        assertEquals("refusing must leave the file untouched", before, target.readText())
+    }
+
+    @Test
+    fun aV1FileLoadsAndIsStampedWithTheCurrentVersionOnSave() {
+        val (store, target) = storeWith("notes.sample.json", "v1")
+        val loaded = store.load()
+        assertEquals(1, loaded.version)
+        assertEquals(3, loaded.notes.size)
+
+        store.save(loaded)
+        assertEquals(SCHEMA_VERSION, store.load().version)
+        assertTrue(target.readText().contains("\"version\": $SCHEMA_VERSION"))
+    }
+
+    @Test
+    fun aV2FileRoundTripsAudienceAndSource() {
+        val (store, target) = storeWith("notes.v2.sample.json", "v2")
+        val loaded = store.load()
+        val imported = loaded.find("a1000002")!!
+        assertEquals("agent+external", imported.audience)
+        assertEquals(501L, imported.source!!.id)
+        assertEquals("9f8e7d6c5b4a", imported.source!!.thread)
+        assertNull(loaded.find("a1000001")!!.audience)
+        assertEquals("external", loaded.find("a1000001")!!.replies[0].audience)
+
+        store.save(loaded)
+        val again = store.load()
+        assertEquals("agent+external", again.find("a1000002")!!.audience)
+        assertEquals(502L, again.find("a1000002")!!.replies[0].source!!.id)
+        assertEquals("private", again.find("a1000003")!!.audience)
+        assertEquals("agent", again.find("a1000003")!!.replies[0].audience)
+        // Unset audience and source stay out of the JSON altogether.
+        val text = target.readText()
+        assertFalse(text.substringAfter("\"a1000001\"").substringBefore("\"a1000002\"").contains("\"source\""))
     }
 
     @Test

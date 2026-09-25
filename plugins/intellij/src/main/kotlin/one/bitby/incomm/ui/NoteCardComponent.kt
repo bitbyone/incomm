@@ -12,7 +12,9 @@ import com.intellij.ui.EditorTextField
 import com.intellij.util.ui.JBUI
 import one.bitby.incomm.model.AUTHOR_USER
 import one.bitby.incomm.model.AUTHOR_AGENT
+import one.bitby.incomm.model.Audience
 import one.bitby.incomm.model.Note
+import one.bitby.incomm.model.Source
 import one.bitby.incomm.settings.IncommSettings
 import one.bitby.incomm.store.NotesService
 import java.awt.BorderLayout
@@ -122,12 +124,12 @@ class NoteCardComponent(
             anchor = GridBagConstraints.NORTHWEST
             insets = JBUI.insetsBottom(gap)
         }
-        body.add(bubbleFor(note, KEY_ORIGINAL, note.author, note.authorTitle, note.createdAt, note.content, null), gbc)
+        body.add(bubbleFor(note, KEY_ORIGINAL, note.author, note.authorTitle, note.createdAt, note.content, null, note.audience, note.source), gbc)
         for (reply in note.replies) {
             gbc.gridy++
             // Replies are lightly nested under the original comment.
             gbc.insets = JBUI.insets(0, indent, gap, 0)
-            body.add(bubbleFor(note, keyReply(reply.id), reply.author, reply.authorTitle, reply.createdAt, reply.content, reply.id), gbc)
+            body.add(bubbleFor(note, keyReply(reply.id), reply.author, reply.authorTitle, reply.createdAt, reply.content, reply.id, reply.audience, reply.source), gbc)
         }
 
         revalidate()
@@ -172,11 +174,18 @@ class NoteCardComponent(
         createdAt: String,
         text: String,
         replyId: String?,
+        audience: String?,
+        source: Source?,
     ): JComponent {
         val editing = editingKey == key
         val bubble = Bubble(author)
+        // The badge goes in the label that is already on this line: no extra row.
+        val effective = Audience.effective(note.audience, audience)
         val headerRow = JPanel(BorderLayout()).apply { isOpaque = false }
-        headerRow.add(ThreadUi.authorLabel(author, ThreadUi.prettyTime(createdAt), authorTitle), BorderLayout.CENTER)
+        headerRow.add(
+            ThreadUi.authorLabel(author, ThreadUi.prettyTime(createdAt), authorTitle, ThreadUi.audienceBadgeHtml(effective, source)),
+            BorderLayout.CENTER,
+        )
 
         val icons = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
         if (editing) {
@@ -189,6 +198,11 @@ class NoteCardComponent(
             bubble.add(field)
             focusAfterBuild = field
         } else {
+            icons.add(ThreadUi.audienceButton(audience, effective) {
+                // The service publishes the change; the editor refreshes this card the
+                // way it does for any other change to the note.
+                NotesService.getInstance(project).setAudience(noteId, replyId, Audience.next(audience))
+            })
             if (author == AUTHOR_USER) {
                 icons.add(ThreadUi.iconButton(IncommIcons.EDIT_COMMENT, "Edit") { editingKey = key; rebuild() })
             }

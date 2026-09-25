@@ -133,16 +133,19 @@ class IncommEditorTracker(private val project: Project) : Disposable {
 
     /** Begin composing a reply for [noteId] inline, in [editor]'s comment card. */
     fun startInlineReply(editor: Editor, noteId: String) {
+        if (NotesService.getInstance(project).isBlocked()) return
         inlayControllers[editor]?.startReply(noteId)
     }
 
     /** Begin composing a new comment for [startLine]..[endLine] inline in [editor]. */
     fun startInlineAdd(editor: Editor, startLine: Int, endLine: Int) {
+        if (NotesService.getInstance(project).isBlocked()) return
         inlayControllers[editor]?.startAdd(startLine, endLine)
     }
 
     /** Begin editing [noteId]'s original comment in place, in [editor]'s card. */
     fun startInlineEdit(editor: Editor, noteId: String) {
+        if (NotesService.getInstance(project).isBlocked()) return
         inlayControllers[editor]?.startEdit(noteId)
     }
 

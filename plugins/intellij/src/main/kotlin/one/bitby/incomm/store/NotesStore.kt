@@ -1,8 +1,10 @@
 package one.bitby.incomm.store
 
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonParser
 import one.bitby.incomm.anchor.Anchoring
 import one.bitby.incomm.model.NotesFile
+import one.bitby.incomm.model.SCHEMA_VERSION
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -10,6 +12,17 @@ import java.nio.file.StandardCopyOption
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
+
+/**
+ * The notes file was written in a newer format than this build understands.
+ * Nothing may be read from it or written over it: an older build would silently
+ * drop what it does not know.
+ */
+class IncompatibleFormatException(val path: Path, val found: Int, val supported: Int) :
+    RuntimeException(
+        ".incomm/${path.fileName} is format v$found, this plugin understands up to v$supported - " +
+            "update the Incomm plugin",
+    )
 
 /**
  * Pure filesystem access to `<root>/.incomm/notes[_<branch>].json`. No IntelliJ
@@ -29,6 +42,12 @@ class NotesStore(val root: Path, val rawBranch: String = "") {
         if (!notesPath.exists()) return NotesFile().normalize()
         val text = notesPath.readText()
         if (text.isBlank()) return NotesFile().normalize()
+        // Look at the version alone first: a newer format may have a shape this
+        // build cannot decode at all, and that is still a version problem.
+        val found = peekVersion(text)
+        if (found != null && found > SCHEMA_VERSION) {
+            throw IncompatibleFormatException(notesPath, found, SCHEMA_VERSION)
+        }
         val parsed = GSON.fromJson(text, NotesFile::class.java) ?: NotesFile()
         return parsed.normalize()
     }
@@ -36,6 +55,7 @@ class NotesStore(val root: Path, val rawBranch: String = "") {
     /** Write notes.json atomically (temp file + rename) with 2-space indent. */
     fun save(file: NotesFile) {
         file.normalize()
+        file.version = SCHEMA_VERSION
         Files.createDirectories(dir)
         val json = GSON.toJson(file) + "\n"
         val tmp = Files.createTempFile(dir, ".notes-", ".json.tmp")
@@ -78,6 +98,13 @@ class NotesStore(val root: Path, val rawBranch: String = "") {
         val p = absFile(rel)
         if (!p.exists()) return null
         return Anchoring.splitLines(p.readText())
+    }
+
+    private fun peekVersion(text: String): Int? = try {
+        val root = JsonParser.parseString(text)
+        if (root.isJsonObject) root.asJsonObject.get("version")?.takeIf { it.isJsonPrimitive }?.asInt else null
+    } catch (_: Exception) {
+        null
     }
 
     companion object {

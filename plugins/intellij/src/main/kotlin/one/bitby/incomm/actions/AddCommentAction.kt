@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.editor.Editor
 import one.bitby.incomm.editor.IncommEditorTracker
+import one.bitby.incomm.store.NotesService
 
 /**
  * "Incomm: Start New Thread" — opens the inline composer for the current
@@ -18,8 +19,10 @@ class AddCommentAction : AnAction() {
 
     override fun update(e: AnActionEvent) {
         val editor = e.getData(CommonDataKeys.EDITOR)
+        val project = e.project
         e.presentation.isEnabledAndVisible =
-            e.project != null && editor != null && e.getData(CommonDataKeys.VIRTUAL_FILE) != null
+            project != null && editor != null && e.getData(CommonDataKeys.VIRTUAL_FILE) != null &&
+                !NotesService.getInstance(project).isBlocked()
     }
 
     override fun actionPerformed(e: AnActionEvent) {

@@ -73,8 +73,10 @@ class AddGutterController(
         return line0 + 1
     }
 
+    // While the notes file is in a newer format nothing can be added, so the "+"
+    // is withheld exactly as it is on a line that already has a thread.
     private fun hasNote(line1: Int): Boolean =
-        NotesService.getInstance(project).hasNoteOnLine(rel, line1)
+        NotesService.getInstance(project).let { it.isBlocked() || it.hasNoteOnLine(rel, line1) }
 
     private fun setHover(line1: Int) {
         if (line1 == hoverLine) return

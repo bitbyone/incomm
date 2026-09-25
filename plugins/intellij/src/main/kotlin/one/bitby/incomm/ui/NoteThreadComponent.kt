@@ -22,6 +22,8 @@ import one.bitby.incomm.model.AUTHOR_AGENT
 import one.bitby.incomm.model.Note
 import one.bitby.incomm.settings.IncommSettings
 import one.bitby.incomm.store.IncommPaths
+import one.bitby.incomm.model.Audience
+import one.bitby.incomm.model.Source
 import one.bitby.incomm.store.NotesService
 import java.awt.BorderLayout
 import java.awt.FlowLayout
@@ -117,10 +119,10 @@ class NoteThreadComponent(
             insets = JBUI.insetsBottom(8)
         }
 
-        threadHost.add(bubbleFor(note, KEY_ORIGINAL, note.author, note.authorTitle, note.createdAt, note.content, null, 0), gbc)
+        threadHost.add(bubbleFor(note, KEY_ORIGINAL, note.author, note.authorTitle, note.createdAt, note.content, null, 0, note.audience, note.source), gbc)
         gbc.gridy++
         for (reply in note.replies) {
-            threadHost.add(bubbleFor(note, keyReply(reply.id), reply.author, reply.authorTitle, reply.createdAt, reply.content, reply.id, JBUI.scale(18)), gbc)
+            threadHost.add(bubbleFor(note, keyReply(reply.id), reply.author, reply.authorTitle, reply.createdAt, reply.content, reply.id, JBUI.scale(18), reply.audience, reply.source), gbc)
             gbc.gridy++
         }
         if (addingReply) {
@@ -283,12 +285,18 @@ class NoteThreadComponent(
         text: String,
         replyId: String?,
         indent: Int,
+        audience: String?,
+        source: Source?,
     ): JComponent {
         val editing = editingKey == key
         val card = roundedCard(author)
 
+        val effective = Audience.effective(note.audience, audience)
         val headerRow = JPanel(BorderLayout()).apply { isOpaque = false }
-        headerRow.add(authorLabel(author, authorTitle, createdAt), BorderLayout.CENTER)
+        headerRow.add(
+            ThreadUi.authorLabel(author, ThreadUi.prettyTime(createdAt), authorTitle, ThreadUi.audienceBadgeHtml(effective, source)),
+            BorderLayout.CENTER,
+        )
 
         val icons = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
         if (editing) {
@@ -301,6 +309,9 @@ class NoteThreadComponent(
             card.add(editor)
             focusAfterBuild = editor
         } else {
+            icons.add(ThreadUi.audienceButton(audience, effective) {
+                NotesService.getInstance(project).setAudience(noteId, replyId, Audience.next(audience))
+            })
             if (author == AUTHOR_USER) {
                 icons.add(iconButton(IncommIcons.EDIT_COMMENT, "Edit") { editingKey = key; addingReply = false; rebuild() })
             }

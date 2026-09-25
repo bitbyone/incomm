@@ -15,7 +15,8 @@ class ClearAction : AnAction() {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
-        e.presentation.isEnabled = e.project != null
+        val project = e.project
+        e.presentation.isEnabled = project != null && !NotesService.getInstance(project).isBlocked()
     }
 
     override fun actionPerformed(e: AnActionEvent) {

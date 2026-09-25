@@ -171,4 +171,65 @@ class NotesServiceTest : BasePlatformTestCase() {
         service.clearAll()
         service.flushWrites()
     }
+
+    // ---- format gate ---------------------------------------------------------
+
+    fun testANewerFormatBlocksTheServiceAndIsNeverWrittenOver() {
+        val service = NotesService.getInstance(project)
+        val path = service.notesPath()!!
+        val fixtures = AnchoringTest.fixturesDir(".")
+        val future = java.io.File(fixtures, "notes.future.json").readText()
+        java.nio.file.Files.createDirectories(path.parent)
+        try {
+            java.nio.file.Files.writeString(path, future)
+            service.reload()
+            assertTrue("a newer format must block the service", service.isBlocked())
+            assertTrue("and show nothing", service.isEmpty())
+
+            // Every way of mutating is refused, and none of them writes.
+            val added = service.addNote("a.txt", 1, 1, "x", AUTHOR_USER, listOf("a"))
+            assertNull("a blocked service keeps nothing it was handed", service.find(added.id))
+            assertFalse(service.updateContent(added.id, "y"))
+            assertFalse(service.removeNote(added.id))
+            assertEquals(0, service.removeNotesForFile("a.txt"))
+            service.clearAll()
+            service.applySavedPositions("a.txt", listOf("a"), emptyMap())
+            service.flushWrites()
+            assertEquals(future, java.nio.file.Files.readString(path))
+
+            // Replacing the file with one this plugin understands lifts the block.
+            val v1 = java.io.File(fixtures, "notes.sample.json").readText()
+            java.nio.file.Files.writeString(path, v1)
+            service.reload()
+            assertFalse(service.isBlocked())
+            assertEquals(3, service.allNotes().size)
+        } finally {
+            java.nio.file.Files.deleteIfExists(path)
+            service.reload()
+            assertFalse(service.isBlocked())
+        }
+    }
+    fun testAudienceChangeIsStoredAndPersisted() {
+        val service = NotesService.getInstance(project)
+        val note = service.addNote("f.txt", 1, 1, "c", AUTHOR_USER, listOf("a"))
+        service.addReply(note.id, "r", AUTHOR_AGENT)
+        val rid = service.find(note.id)!!.replies[0].id
+
+        assertTrue(service.setAudience(note.id, null, "agent+external"))
+        assertTrue(service.setAudience(note.id, rid, "private"))
+        assertEquals("agent+external", service.find(note.id)!!.audience)
+        assertEquals("private", service.find(note.id)!!.replies[0].audience)
+
+        // The default is stored as absent, and unknown targets or values are refused.
+        assertTrue(service.setAudience(note.id, null, "agent"))
+        assertNull(service.find(note.id)!!.audience)
+        assertFalse(service.setAudience(note.id, "nope", "external"))
+        assertFalse(service.setAudience("missing", null, "external"))
+        assertFalse(service.setAudience(note.id, null, "team"))
+
+        service.flushWrites()
+        val onDisk = NotesStore(Paths.get(project.basePath!!), "").load().find(note.id)!!
+        assertNull(onDisk.audience)
+        assertEquals("private", onDisk.replies[0].audience)
+    }
 }

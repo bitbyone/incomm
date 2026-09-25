@@ -6,7 +6,9 @@ import com.intellij.ui.ColorUtil
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import one.bitby.incomm.model.AUDIENCE_PRIVATE
 import one.bitby.incomm.model.AUTHOR_AGENT
+import one.bitby.incomm.model.Audience
 import one.bitby.incomm.model.Note
 import one.bitby.incomm.settings.IncommSettings
 import java.awt.Color
@@ -87,6 +89,24 @@ object IncommColors {
 
     /** Right scrollbar (error stripe) mark colour for threads: green when resolved, otherwise light blue. */
     fun scrollbarMark(note: Note): Color = if (note.resolved) stateResolved else stateOpen
+
+    // ---- audience badge ------------------------------------------------------
+
+    /**
+     * Badge text colour for an audience: external reads as a warning (it leaves
+     * the machine), private as muted, and the two published-state words as
+     * success and warning. All mixed toward the label foreground so they stay
+     * readable on a tinted bubble in any theme.
+     */
+    fun audienceBadge(audience: String): Color = when (Audience.normalize(audience)) {
+        AUDIENCE_PRIVATE -> muted
+        else -> readable(JBUI.CurrentTheme.Banner.WARNING_BORDER_COLOR)
+    }
+
+    val publishedBadge: Color get() = readable(JBUI.CurrentTheme.Banner.SUCCESS_BORDER_COLOR)
+    val notPublishedBadge: Color get() = readable(JBUI.CurrentTheme.Banner.WARNING_BORDER_COLOR)
+
+    private fun readable(accent: Color): Color = ColorUtil.mix(accent, UIUtil.getLabelForeground(), 0.4)
 
     // ---- explorer list row backgrounds -------------------------------------
 

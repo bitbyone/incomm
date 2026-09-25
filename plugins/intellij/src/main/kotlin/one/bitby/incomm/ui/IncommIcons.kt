@@ -11,6 +11,7 @@ object IncommIcons {
     @JvmField val EDIT_COMMENT = IconLoader.getIcon("/icons/editComment.svg", IncommIcons::class.java)
     @JvmField val DELETE_COMMENT = IconLoader.getIcon("/icons/deleteComment.svg", IncommIcons::class.java)
     @JvmField val REPLY = IconLoader.getIcon("/icons/reply.svg", IncommIcons::class.java)
+    @JvmField val AUDIENCE = IconLoader.getIcon("/icons/audience.svg", IncommIcons::class.java)
     @JvmField val CHECK = IconLoader.getIcon("/icons/check.svg", IncommIcons::class.java)
     @JvmField val CANCEL = IconLoader.getIcon("/icons/cross.svg", IncommIcons::class.java)
 }

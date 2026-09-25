@@ -7,6 +7,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.util.concurrency.AppExecutorUtil
 import one.bitby.incomm.anchor.Anchoring
+import one.bitby.incomm.model.Audience
 import one.bitby.incomm.model.Note
 import one.bitby.incomm.model.NotesFile
 import one.bitby.incomm.model.Reply
@@ -43,6 +44,17 @@ class NotesService(private val project: Project) : Disposable {
      * not resurrected from the still-current on-disk copy. Guarded by [lock].
      */
     private val locallyDeleted = HashSet<String>()
+
+    /**
+     * Set while the notes file is in a newer format than this plugin understands.
+     * The model is then empty and nothing is ever written: an older build would
+     * silently drop the fields it does not know.
+     */
+    @Volatile
+    private var blocked: IncompatibleFormatException? = null
+
+    /** Whether the notes file is in a newer format, so the plugin is read-only-and-empty. */
+    fun isBlocked(): Boolean = blocked != null
 
     private val writeExecutor =
         AppExecutorUtil.createBoundedApplicationPoolExecutor("Incomm Notes Writer", 1)
@@ -121,9 +133,19 @@ class NotesService(private val project: Project) : Disposable {
         val store = storeOrNull() ?: return
         val loaded = try {
             store.load()
+        } catch (e: IncompatibleFormatException) {
+            enterBlocked(e, publish)
+            return
         } catch (e: Exception) {
             thisLogger().warn("incomm: failed to load ${store.notesPath}", e)
             NotesFile()
+        }
+        // A file that is compatible again lifts the block; the UI must follow even
+        // when the (empty) model looks unchanged.
+        val wasBlocked = blocked != null
+        if (wasBlocked) {
+            blocked = null
+            FormatNotifier.reset(store.notesPath.toString())
         }
         // Skip the notification (and the UI rebuild it drives) when the file on
         // disk already matches memory — e.g. the reload triggered by our own
@@ -151,13 +173,34 @@ class NotesService(private val project: Project) : Disposable {
                 true
             }
         }
-        if (publish && changed) publishChanged()
+        if (publish && (changed || wasBlocked)) publishChanged()
         if (publish && agentNews.isNotEmpty()) {
             ApplicationManager.getApplication().invokeLater(
                 { if (!project.isDisposed) AgentNotifier.notify(project, agentNews) },
                 project.disposed,
             )
         }
+    }
+
+    /**
+     * The file is in a newer format: show nothing, write nothing, and say so once.
+     * Publishes only when the visible state changes, so a watcher reloading the
+     * same unreadable file does not churn the UI.
+     */
+    private fun enterBlocked(e: IncompatibleFormatException, publish: Boolean) {
+        val wasBlocked = blocked != null
+        blocked = e
+        val hadNotes = synchronized(lock) {
+            val had = model.notes.isNotEmpty()
+            model = NotesFile()
+            locallyDeleted.clear()
+            had
+        }
+        if (publish && (hadNotes || !wasBlocked)) publishChanged()
+        ApplicationManager.getApplication().invokeLater(
+            { if (!project.isDisposed) FormatNotifier.notify(project, e) },
+            project.disposed,
+        )
     }
 
     // ---- mutations ---------------------------------------------------------
@@ -189,6 +232,9 @@ class NotesService(private val project: Project) : Disposable {
             updatedAt = now,
             replies = mutableListOf(),
         )
+        // Blocked: hand the note back so the caller does not fail, but never keep
+        // or write it (the UI does not offer this, so this is only a backstop).
+        if (blocked != null) return note.deepCopy()
         synchronized(lock) { model.notes.add(note) }
         persistAndNotify()
         return note.deepCopy()
@@ -201,7 +247,7 @@ class NotesService(private val project: Project) : Disposable {
 
     fun addReply(id: String, content: String, author: String, authorTitle: String? = null) = mutate(id) {
         val title = authorTitle ?: defaultAuthorTitle(author)
-        it.replies.add(Reply(newId(), author, title, content, nowUtc()))
+        it.replies.add(Reply(id = newId(), author = author, authorTitle = title, content = content, createdAt = nowUtc()))
         it.updatedAt = nowUtc()
     }
 
@@ -224,6 +270,22 @@ class NotesService(private val project: Project) : Disposable {
         it.updatedAt = nowUtc()
     }
 
+    /**
+     * Change who may see a comment: the thread's first comment, or one reply when
+     * [replyId] is given. The default audience is stored as absent. Refused while
+     * the notes file is in a newer format, and for an unknown reply or audience.
+     */
+    fun setAudience(noteId: String, replyId: String?, audience: String): Boolean {
+        if (audience !in Audience.CYCLE) return false
+        if (replyId != null && find(noteId)?.replies?.any { it.id == replyId } != true) return false
+        val stored = Audience.stored(audience)
+        return mutate(noteId) { note ->
+            if (replyId == null) note.audience = stored
+            else note.replies.first { it.id == replyId }.audience = stored
+            note.updatedAt = nowUtc()
+        }
+    }
+
     /** Persist a new position (used by live tracking on document save). */
     fun updatePosition(id: String, startLine: Int, endLine: Int, fileLines: List<String>) = mutate(id) {
         it.startLine = startLine
@@ -244,6 +306,7 @@ class NotesService(private val project: Project) : Disposable {
      * marker died had to be re-anchored by text (its gutter marker must be rebuilt).
      */
     fun applySavedPositions(rel: String, fileLines: List<String>, positions: Map<String, Pair<Int, Int>>) {
+        if (blocked != null) return
         var changed = false
         var needsRebuild = false
         synchronized(lock) {
@@ -280,6 +343,7 @@ class NotesService(private val project: Project) : Disposable {
     }
 
     fun removeNote(id: String): Boolean {
+        if (blocked != null) return false
         val removed = synchronized(lock) {
             if (model.remove(id)) { locallyDeleted.add(id); true } else false
         }
@@ -289,6 +353,7 @@ class NotesService(private val project: Project) : Disposable {
 
     /** Delete every note for one file (rel path). Returns how many were removed. */
     fun removeNotesForFile(rel: String): Int {
+        if (blocked != null) return 0
         val removed = synchronized(lock) {
             val gone = model.notes.filter { it.file == rel }.map { it.id }
             model.notes.removeAll { it.file == rel }
@@ -301,6 +366,7 @@ class NotesService(private val project: Project) : Disposable {
 
     /** Delete every note for the current branch by removing its notes file. */
     fun clearAll() {
+        if (blocked != null) return
         synchronized(lock) { model = NotesFile() }
         publishChanged()
         val store = storeOrNull() ?: return
@@ -318,6 +384,7 @@ class NotesService(private val project: Project) : Disposable {
      * missing mark their notes orphaned. Returns whether anything changed.
      */
     fun reanchorAllFromDisk(): Boolean {
+        if (blocked != null) return false
         val store = storeOrNull() ?: return false
         var changed = false
         synchronized(lock) {
@@ -344,7 +411,7 @@ class NotesService(private val project: Project) : Disposable {
      * Missing files mark their notes orphaned. Returns whether anything changed.
      */
     fun reanchorFilesFromDisk(rels: Set<String>): Boolean {
-        if (rels.isEmpty()) return false
+        if (rels.isEmpty() || blocked != null) return false
         val store = storeOrNull() ?: return false
         var changed = false
         synchronized(lock) {
@@ -367,6 +434,7 @@ class NotesService(private val project: Project) : Disposable {
     }
 
     private inline fun mutate(id: String, block: (Note) -> Unit): Boolean {
+        if (blocked != null) return false
         val hit = synchronized(lock) {
             val note = model.find(id) ?: return false
             block(note)
@@ -397,11 +465,16 @@ class NotesService(private val project: Project) : Disposable {
      * them). Newly discovered external notes also trigger a refresh so they appear.
      */
     private fun persist(notify: Boolean) {
+        if (blocked != null) return // a newer-format file is never written over
         if (notify) publishChanged() // immediate UI for the local change
         val store = storeOrNull() ?: return
         writeExecutor.execute {
             val disk = try {
                 store.load()
+            } catch (e: IncompatibleFormatException) {
+                // Replaced by a newer format since we last looked: do not write.
+                enterBlocked(e, publish = true)
+                return@execute
             } catch (e: Exception) {
                 thisLogger().warn("incomm: load-for-merge failed", e)
                 null

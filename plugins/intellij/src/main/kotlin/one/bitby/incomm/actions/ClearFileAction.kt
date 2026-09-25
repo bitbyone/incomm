@@ -17,8 +17,10 @@ class ClearFileAction : AnAction() {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
+        val project = e.project
         e.presentation.isEnabled =
-            e.project != null && e.getData(CommonDataKeys.VIRTUAL_FILE) != null
+            project != null && e.getData(CommonDataKeys.VIRTUAL_FILE) != null &&
+                !NotesService.getInstance(project).isBlocked()
     }
 
     override fun actionPerformed(e: AnActionEvent) {

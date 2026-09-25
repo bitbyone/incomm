@@ -4,8 +4,15 @@ import java.security.SecureRandom
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
-/** Current notes.json schema version. Must match README.md (data-format spec) / the Go CLI. */
-const val SCHEMA_VERSION = 1
+/**
+ * The newest notes.json format this build understands, and the version every save
+ * stamps. Any change to the JSON shape bumps it (AGENTS.md §11.7); a build refuses
+ * to read or write a file whose version is greater than its own.
+ */
+const val SCHEMA_VERSION = 2
+
+/** What a file with no version field is taken to be. */
+const val LEGACY_VERSION = 1
 
 const val AUTHOR_USER = "user"
 const val AUTHOR_AGENT = "agent"
@@ -24,7 +31,7 @@ data class NotesFile(
     fun normalize(): NotesFile {
         @Suppress("SENSELESS_COMPARISON")
         if (notes == null) notes = mutableListOf()
-        if (version == 0) version = SCHEMA_VERSION
+        if (version == 0) version = LEGACY_VERSION
         notes.forEach { it.normalize() }
         return this
     }
@@ -50,6 +57,8 @@ data class Note(
     var orphaned: Boolean = false,
     var author: String = AUTHOR_USER,
     var authorTitle: String? = null,
+    var audience: String? = null,
+    var source: Source? = null,
     var createdAt: String = "",
     var updatedAt: String = "",
     var replies: MutableList<Reply> = mutableListOf(),
@@ -62,6 +71,8 @@ data class Note(
         if (content == null) content = ""
         if (file == null) file = ""
         if (id == null) id = ""
+        if (audience.isNullOrBlank()) audience = null
+        replies.forEach { it.normalize() }
     }
 
     /** Human-readable `file:line` (or `file:start-end`) location. */
@@ -84,7 +95,7 @@ data class Note(
 
     /** Deep, independent copy (anchor + replies not shared). */
     fun deepCopy(): Note =
-        copy(anchor = anchor.copy(), replies = replies.map { it.copy() }.toMutableList())
+        copy(anchor = anchor.copy(), source = source?.copy(), replies = replies.map { it.deepCopy() }.toMutableList())
 }
 
 /**
@@ -99,14 +110,32 @@ data class Anchor(
     var checksum: String = "",
 )
 
+/**
+ * Where a comment came from or was published to. Metadata for integrations: an
+ * `external` comment with no source is still waiting to be published.
+ */
+data class Source(
+    var url: String? = null,
+    var id: Long? = null,
+    var thread: String? = null,
+)
+
 /** A single response in a note's thread. */
 data class Reply(
     var id: String = "",
     var author: String = AUTHOR_AGENT,
     var authorTitle: String? = null,
+    var audience: String? = null,
+    var source: Source? = null,
     var content: String = "",
     var createdAt: String = "",
-)
+) {
+    fun normalize() {
+        if (audience.isNullOrBlank()) audience = null
+    }
+
+    fun deepCopy(): Reply = copy(source = source?.copy())
+}
 
 /** Current UTC time as an RFC3339 instant, e.g. `2026-07-17T15:12:49Z`. */
 fun nowUtc(): String = Instant.now().truncatedTo(ChronoUnit.SECONDS).toString()

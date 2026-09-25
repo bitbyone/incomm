@@ -255,7 +255,9 @@ first line, a thin band down the rest — so nothing ever paints over the code.
 ## Who sees a comment
 
 Every comment and every reply has an **audience**, and it belongs to that one
-comment, not to the thread:
+comment, not to the thread. A new reply starts with the audience its original comment has
+at that moment (later changes to the original never rewrite replies that exist), and while
+the original is `private` every reply is drawn as `private` whatever it stores:
 
 | Audience | Meaning |
 |---|---|

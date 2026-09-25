@@ -257,6 +257,75 @@ T.test("a card draws the badge on each comment, and a private root makes its rep
   end)
 end)
 
+T.test("a private root shows every reply as private, and the replies come back when it does", function()
+  T.with_tmpdir(function(dir)
+    local bufnr, svc = open_fixture(dir)
+    local note = svc:add_note("src/main.go", 4, 4, "root")
+    svc:add_reply(note.id, "one", "agent", "Opus 5", "external")
+    svc:add_reply(note.id, "two", "user", "Jan", "agent+external")
+    local function card()
+      track.refresh(bufnr)
+      local mark = vim.api.nvim_buf_get_extmarks(bufnr, render.ns, 0, -1, { details = true })[1]
+      local lines = {}
+      for _, row in ipairs(mark[4].virt_lines) do
+        lines[#lines + 1] = flat(row)
+      end
+      return table.concat(lines, "\n")
+    end
+    local function count(text, word)
+      local n = 0
+      for _ in text:gmatch(word) do
+        n = n + 1
+      end
+      return n
+    end
+
+    svc:set_audience(note.id, nil, "private")
+    local private = card()
+    T.eq(count(private, "private"), 3, "the root and both replies read private: " .. private)
+    T.ok(not private:find("external", 1, true), "whatever they store")
+    local stored = svc:find(note.id)
+    T.eq(stored.replies[1].audience, "external", "and what they store is untouched")
+    T.eq(stored.replies[2].audience, "agent+external")
+    T.eq(model.effective_audience(stored, stored.replies[1]), "private")
+
+    svc:set_audience(note.id, nil, "agent")
+    local back = card()
+    T.eq(count(back, "private"), 0, "back to the agent's: " .. back)
+    T.ok(back:find("external · not published", 1, true), "the first reply is external again: " .. back)
+    T.ok(back:find("agent + external · not published", 1, true), "and the second is its own: " .. back)
+  end)
+end)
+
+T.test("a new reply is addressed like the comment it answers", function()
+  T.with_tmpdir(function(dir)
+    local _, svc = open_fixture(dir)
+    for _, audience in ipairs({ "agent", "agent+external", "external", "private" }) do
+      local note = svc:add_note("src/main.go", 4, 4, "root " .. audience)
+      svc:set_audience(note.id, nil, audience)
+      svc:add_reply(note.id, "answer", "agent", "Opus 5")
+      T.eq(svc:find(note.id).replies[1].audience, audience, "a reply under " .. audience)
+      svc:add_reply(note.id, "another", "user", "Jan")
+      T.eq(svc:find(note.id).replies[2].audience, audience, "and the next one")
+    end
+    -- Changing the root later never rewrites replies that exist.
+    local note = svc:add_note("src/main.go", 4, 4, "root")
+    svc:set_audience(note.id, nil, "external")
+    svc:add_reply(note.id, "early")
+    svc:set_audience(note.id, nil, "private")
+    svc:add_reply(note.id, "late")
+    local stored = svc:find(note.id)
+    T.eq(stored.replies[1].audience, "external")
+    T.eq(stored.replies[2].audience, "private")
+    -- A root with no audience of its own counts as agent, and an explicit one wins.
+    local plain = svc:add_note("src/main.go", 4, 4, "plain")
+    stored = svc:find(plain.id)
+    stored.audience = nil
+    svc:add_reply(plain.id, "x", "user", "Jan", "external")
+    T.eq(svc:find(plain.id).replies[1].audience, "external", "an explicit audience wins")
+  end)
+end)
+
 -- ---- the service ---------------------------------------------------------------
 
 T.test("set_audience stores the default as agent and never changes what it was not asked to", function()
@@ -544,7 +613,8 @@ T.test("the explorer's a changes the selected thread and its detail pane shows t
         T.eq(#calls, 1)
       end)
     end)
-    T.eq(svc:find(note.id).replies[1].audience, "agent+external")
+    -- The reply began as its root's agent+external, and one step of the cycle is external.
+    T.eq(svc:find(note.id).replies[1].audience, "external")
     if explorer.current() then
       explorer.close(explorer.current())
     end

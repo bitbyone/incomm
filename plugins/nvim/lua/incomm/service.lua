@@ -581,14 +581,15 @@ end
 ---@param content string
 ---@param author? string
 ---@param author_title? string
-function Service:add_reply(id, content, author, author_title)
+function Service:add_reply(id, content, author, author_title, audience)
   author = author or model.AUTHOR_USER
   return self:mutate(id, function(note)
     table.insert(note.replies, {
       id = model.new_id(),
       author = author,
       authorTitle = author_title or (author == model.AUTHOR_USER and self:default_author_title() or nil),
-      audience = model.AUDIENCE_AGENT,
+      -- A reply is addressed like the comment it answers, unless told otherwise.
+      audience = audience or model.normalize_audience(note.audience),
       content = content,
       createdAt = model.now_utc(),
     })

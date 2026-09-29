@@ -72,12 +72,13 @@ object ThreadUi {
     /** Kept for the composer input backgrounds; sourced from the active theme. */
     val USER_BG: Color get() = IncommColors.bubbleBg(AUTHOR_USER)
 
-    fun bgFor(author: String): Color = IncommColors.bubbleBg(author)
-    fun bgHoverFor(author: String): Color = IncommColors.bubbleBgHover(author)
+    /** A bubble's fill by its [Audience.tone] (the author, or for your own words who may see them). */
+    fun bgFor(tone: String): Color = IncommColors.bubbleBgFor(tone)
+    fun bgHoverFor(tone: String): Color = IncommColors.bubbleBgHoverFor(tone)
 
-    /** A rounded, author-coloured card laid out top-to-bottom. */
-    fun roundedCard(author: String): JPanel {
-        return RoundedPanel(IncommColors.bubbleBg(author)).apply {
+    /** A rounded card laid out top-to-bottom, in the colour of its [Audience.tone]. */
+    fun roundedCard(tone: String): JPanel {
+        return RoundedPanel(IncommColors.bubbleBgFor(tone)).apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = JBUI.Borders.empty(8, 12, 10, 8)
         }

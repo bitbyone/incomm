@@ -297,9 +297,10 @@ class NoteThreadComponent(
         source: Source?,
     ): JComponent {
         val editing = editingKey == key
-        val card = roundedCard(author)
-
         val effective = Audience.effective(note.audience, audience)
+        // Coloured by who wrote it, and for your own words by who may see them.
+        val card = roundedCard(Audience.tone(author, effective))
+
         val headerRow = JPanel(BorderLayout()).apply { isOpaque = false }
         headerRow.add(
             ThreadUi.authorLabel(author, ThreadUi.prettyTime(createdAt), authorTitle, ThreadUi.audienceBadgeHtml(effective, source)),
@@ -430,7 +431,7 @@ class NoteThreadComponent(
     private fun iconButton(icon: Icon, tooltip: String, onClick: () -> Unit): InplaceButton =
         ThreadUi.iconButton(icon, tooltip, onClick)
 
-    private fun roundedCard(author: String): JPanel = ThreadUi.roundedCard(author)
+    private fun roundedCard(tone: String): JPanel = ThreadUi.roundedCard(tone)
 
     private fun indented(card: JComponent, indent: Int): JComponent =
         JPanel(BorderLayout()).apply {

@@ -149,6 +149,19 @@ object Audience {
         }
     }
 
+    /**
+     * The colour a bubble is drawn in: the agent's words are always the agent's
+     * ([AUTHOR_AGENT]); your own are coloured by who may see them, from the
+     * [effective] audience - external (anything meant for the merge request),
+     * private, or plain [AUTHOR_USER] (you and the agent).
+     */
+    fun tone(author: String, effective: String?): String = when {
+        author == AUTHOR_AGENT -> AUTHOR_AGENT
+        normalize(effective) == AUDIENCE_PRIVATE -> AUDIENCE_PRIVATE
+        includesExternal(effective) -> AUDIENCE_EXTERNAL
+        else -> AUTHOR_USER
+    }
+
     /** How an audience reads in the UI. */
     fun label(audience: String?): String = when (normalize(audience)) {
         AUDIENCE_BOTH -> "agent + external"

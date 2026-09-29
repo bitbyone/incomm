@@ -183,9 +183,10 @@ class NoteCardComponent(
         source: Source?,
     ): JComponent {
         val editing = editingKey == key
-        val bubble = Bubble(author)
         // The badge goes in the label that is already on this line: no extra row.
         val effective = Audience.effective(note.audience, audience)
+        val tone = Audience.tone(author, effective)
+        val bubble = Bubble(tone)
         val headerRow = JPanel(BorderLayout()).apply { isOpaque = false }
         headerRow.add(
             ThreadUi.authorLabel(author, ThreadUi.prettyTime(createdAt), authorTitle, ThreadUi.audienceBadgeHtml(effective, source)),
@@ -194,7 +195,7 @@ class NoteCardComponent(
 
         val icons = JPanel(FlowLayout(FlowLayout.RIGHT, 2, 0)).apply { isOpaque = false }
         if (editing) {
-            val field = editorField(text)
+            val field = editorField(text, ThreadUi.bgFor(tone))
             icons.add(ThreadUi.iconButton(IncommIcons.CHECK, "Save") { saveEdit(key, replyId, field.text) })
             icons.add(ThreadUi.iconButton(IncommIcons.CANCEL, "Cancel") { editingKey = null; rebuild() })
             registerEditShortcuts(field, { saveEdit(key, replyId, field.text) }, { editingKey = null; rebuild() })
@@ -239,7 +240,7 @@ class NoteCardComponent(
         }.registerCustomShortcutSet(CommonShortcuts.ESCAPE, field)
     }
 
-    private fun editorField(text: String): EditorTextField {
+    private fun editorField(text: String, background: java.awt.Color = ThreadUi.USER_BG): EditorTextField {
         // A plain EditorTextField reports a one-line preferred height even in
         // multi-line mode, so it never grows. Size it to its actual line count.
         val field = object : EditorTextField(text, project, FileTypes.PLAIN_TEXT) {
@@ -252,7 +253,7 @@ class NoteCardComponent(
             }
         }
         field.setOneLineMode(false)
-        field.background = ThreadUi.USER_BG
+        field.background = background
         field.border = JBUI.Borders.empty(2)
         field.addSettingsProvider { e ->
             e.settings.apply {
@@ -267,7 +268,7 @@ class NoteCardComponent(
                 isVirtualSpace = true
             }
             e.setBorder(JBUI.Borders.empty())
-            e.backgroundColor = ThreadUi.USER_BG
+            e.backgroundColor = background
         }
         // Let the enclosing block inlay grow as the user adds lines while editing,
         // so the editor isn't clipped to one line.
@@ -334,7 +335,8 @@ class NoteCardComponent(
 
     // ---- bubble panel ------------------------------------------------------
 
-    private inner class Bubble(private val author: String) : JPanel() {
+    /** One message, filled in the colour of its [Audience.tone]. */
+    private inner class Bubble(private val tone: String) : JPanel() {
         var hovered = false
 
         init {
@@ -369,7 +371,7 @@ class NoteCardComponent(
             val g2 = g.create() as Graphics2D
             try {
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-                g2.color = if (hovered) ThreadUi.bgHoverFor(author) else ThreadUi.bgFor(author)
+                g2.color = if (hovered) ThreadUi.bgHoverFor(tone) else ThreadUi.bgFor(tone)
                 g2.fillRoundRect(0, 0, width - 1, height - 1, JBUI.scale(12), JBUI.scale(12))
             } finally {
                 g2.dispose()

@@ -143,6 +143,17 @@ class AudienceTest {
     }
 
     @Test
+    fun `a bubble is the agent's colour for the agent, and says who sees your own`() {
+        for (a in Audience.CYCLE) assertEquals("the author wins", AUTHOR_AGENT, Audience.tone(AUTHOR_AGENT, a))
+        assertEquals(AUTHOR_USER, Audience.tone(AUTHOR_USER, AUDIENCE_AGENT))
+        assertEquals("absent is agent", AUTHOR_USER, Audience.tone(AUTHOR_USER, null))
+        assertEquals(AUDIENCE_EXTERNAL, Audience.tone(AUTHOR_USER, AUDIENCE_BOTH))
+        assertEquals(AUDIENCE_EXTERNAL, Audience.tone(AUTHOR_USER, AUDIENCE_EXTERNAL))
+        assertEquals(AUDIENCE_PRIVATE, Audience.tone(AUTHOR_USER, AUDIENCE_PRIVATE))
+        assertEquals("an unknown audience is private", AUDIENCE_PRIVATE, Audience.tone(AUTHOR_USER, "team"))
+    }
+
+    @Test
     fun `previous undoes next and wraps round`() {
         for (a in Audience.CYCLE) assertEquals(a, Audience.previous(Audience.next(a)))
         assertEquals(AUDIENCE_PRIVATE, Audience.previous(null))

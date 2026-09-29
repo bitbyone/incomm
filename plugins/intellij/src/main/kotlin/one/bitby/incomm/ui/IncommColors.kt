@@ -7,6 +7,7 @@ import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import one.bitby.incomm.model.AUDIENCE_AGENT
+import one.bitby.incomm.model.AUDIENCE_EXTERNAL
 import one.bitby.incomm.model.AUDIENCE_PRIVATE
 import one.bitby.incomm.model.AUTHOR_AGENT
 import one.bitby.incomm.model.Audience
@@ -68,6 +69,27 @@ object IncommColors {
     fun bubbleAccent(author: String): Color =
         if (author == AUTHOR_AGENT) pick(settings.agentNameFg, themeAgentName())
         else pick(settings.userNameFg, themeUserName())
+
+    /**
+     * A bubble's fill by its [Audience.tone]: the author's bubble for the agent and
+     * for your plain comments, light purple for yours meant for the merge request,
+     * grey for yours only you see. Purple is a theme key (`Incomm.externalAccent`)
+     * with defaults, since no theme names one; grey is the muted text colour.
+     */
+    fun bubbleBgFor(tone: String): Color = when (tone) {
+        AUDIENCE_EXTERNAL -> bubbleTint(externalAccent)
+        AUDIENCE_PRIVATE -> bubbleTint(muted)
+        else -> bubbleBg(tone)
+    }
+
+    fun bubbleBgHoverFor(tone: String): Color = when (tone) {
+        AUDIENCE_EXTERNAL -> ColorUtil.mix(bubbleBgFor(tone), externalAccent, 0.12)
+        AUDIENCE_PRIVATE -> ColorUtil.mix(bubbleBgFor(tone), muted, 0.12)
+        else -> bubbleBgHover(tone)
+    }
+
+    val externalAccent: Color
+        get() = JBColor.namedColor("Incomm.externalAccent", JBColor(0x9A7BD8, 0xA58BE0))
 
     /** Hover state: the bubble tinted slightly toward its own accent. */
     fun bubbleBgHover(author: String): Color =

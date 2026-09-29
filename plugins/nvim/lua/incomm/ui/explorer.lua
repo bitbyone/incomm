@@ -465,6 +465,30 @@ function M.close(self)
   end
 end
 
+--- The window to open code in: `preferred` when it is still a normal window,
+--- otherwise the first normal window of the tab (floats never qualify).
+---@param preferred integer?
+---@return integer?
+local function code_window(preferred)
+  local function normal(win)
+    return win and vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_config(win).relative == ""
+  end
+  if normal(preferred) then
+    return preferred
+  end
+  local fallback
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if normal(win) then
+      -- A file's window beats a sidebar's (a tree, a terminal).
+      if vim.bo[vim.api.nvim_win_get_buf(win)].buftype == "" then
+        return win
+      end
+      fallback = fallback or win
+    end
+  end
+  return fallback
+end
+
 --- Open the explorer for `svc`, optionally narrowed to one file.
 ---@param svc incomm.Service
 ---@param rel? string
@@ -485,6 +509,8 @@ function M.open(svc, rel)
   local self = {
     svc = svc,
     rel = rel,
+    -- Where `<CR>` opens the code: the window the explorer was opened from.
+    origin_win = vim.api.nvim_get_current_win(),
     query = "",
     index = 1,
     items = {},
@@ -590,6 +616,14 @@ function M.open(svc, rel)
     local path = svc.store:abs_file(note.file)
     M.close(self)
     vim.schedule(function()
+      -- Closing the explorer hands focus to whatever window Neovim picks next,
+      -- which after a fresh start can be another plugin's float (a
+      -- notification, a picker): the file would open in there, out of sight.
+      -- Open it where the explorer was opened from instead.
+      local target = code_window(self.origin_win)
+      if target then
+        vim.api.nvim_set_current_win(target)
+      end
       vim.cmd.edit(vim.fn.fnameescape(path))
       local line = math.min(note.startLine, vim.api.nvim_buf_line_count(0))
       vim.api.nvim_win_set_cursor(0, { math.max(line, 1), 0 })

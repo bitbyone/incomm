@@ -473,5 +473,29 @@ T.test("the file-scoped explorer only lists that file's threads", function()
   end)
 end)
 
+T.test("enter opens the code where the explorer came from, never in someone else's float", function()
+  T.with_tmpdir(function(dir)
+    local svc = fixture(dir)
+    explorer.filters = { open = true, resolved = false, orphaned = true }
+    local code = vim.api.nvim_get_current_win()
+
+    -- A focusable float of another plugin (a notification, a picker) was the
+    -- window before: closing the explorer hands the focus to it.
+    local other = vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), true, {
+      relative = "editor", row = 1, col = 1, width = 20, height = 2,
+    })
+    explorer.open(svc)
+    feed("<CR>")
+    settle(function()
+      return vim.fn.bufname():find("main.go", 1, true) ~= nil
+    end)
+    T.eq(vim.api.nvim_get_current_win(), code, "the file opens in the code window, focused")
+    T.eq(vim.api.nvim_win_get_config(0).relative, "")
+    T.ok(vim.fn.bufname():find("src/main.go", 1, true), vim.fn.bufname())
+    T.eq(vim.fn.bufname(vim.api.nvim_win_get_buf(other)), "", "the other float is left alone")
+    pcall(vim.api.nvim_win_close, other, true)
+  end)
+end)
+
 close()
 service.reset()

@@ -272,10 +272,51 @@ T.test("card.offset shifts a card right, for margins incomm cannot see", functio
     track.render_buf(bufnr)
     T.eq(lead(), 5)
     value = 9
-    track.check_offset(bufnr)
+    track.check_layout(bufnr)
     T.eq(lead(), 9, "the cheap check redrew it")
 
     config.options.card.offset = config.defaults.card.offset
+    config.options.card.width = config.defaults.card.width
+  end)
+end)
+
+T.test("a card follows the buffer into a wider window", function()
+  T.with_tmpdir(function(dir)
+    local config = require("incomm.config")
+    local bufnr, svc = open_fixture(dir)
+    config.options.card.width = 60
+    svc:add_note("src/main.go", 4, 4, "drawn first in a picker preview")
+    track.refresh(bufnr)
+
+    local function card_width()
+      for _, m in ipairs(marks(bufnr, render.ns)) do
+        if m[4].virt_lines then
+          local w = 0
+          for _, chunk in ipairs(m[4].virt_lines[2]) do
+            w = w + vim.fn.strdisplaywidth(chunk[1])
+          end
+          return w
+        end
+      end
+    end
+
+    -- A picker previews the file in a narrow pane, then opens it in the main
+    -- window and closes the preview. Nothing in the model changes.
+    local main = vim.api.nvim_get_current_win()
+    vim.cmd("enew")
+    vim.cmd("vsplit")
+    vim.cmd("vertical resize 30")
+    vim.cmd("buffer " .. bufnr)
+    local preview = vim.api.nvim_get_current_win()
+    track.render_buf(bufnr)
+    T.ok(card_width() <= 30, "squeezed into the preview, got " .. tostring(card_width()))
+
+    vim.api.nvim_set_current_win(main)
+    vim.cmd("buffer " .. bufnr)
+    vim.api.nvim_win_close(preview, true)
+    track.check_windows({ main })
+    T.eq(card_width(), 60, "redrawn for the window it ended up in")
+
     config.options.card.width = config.defaults.card.width
   end)
 end)

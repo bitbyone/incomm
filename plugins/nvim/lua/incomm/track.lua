@@ -33,6 +33,7 @@ M.ns = vim.api.nvim_create_namespace("incomm_track")
 ---@field pending boolean
 ---@field flushing boolean
 ---@field unsubscribe fun()?
+---@field layout string? the geometry the cards were last drawn for, see `check_layout`
 
 ---@type table<integer, incomm.Tracked>
 local tracked = {}
@@ -93,6 +94,14 @@ function M.live_positions(bufnr)
   return out
 end
 
+--- The window geometry a buffer's cards are drawn for: the columns they may
+--- fill and the client's `card.offset`. Both are baked into the virt_lines.
+---@param bufnr integer
+---@return string
+local function layout_key(bufnr)
+  return render.text_width(bufnr) .. ":" .. render.offset_for(bufnr)
+end
+
 --- Redraw one buffer from the model, using live mark positions.
 ---@param bufnr integer
 function M.render_buf(bufnr)
@@ -100,24 +109,38 @@ function M.render_buf(bufnr)
   if not t or not vim.api.nvim_buf_is_loaded(bufnr) then
     return
   end
-  t.offset = render.offset_for(bufnr)
+  t.layout = layout_key(bufnr)
   render.render(bufnr, t.svc, t.rel, M.live_positions(bufnr))
 end
 
---- Redraw only if the client's `card.offset` now answers differently.
+--- Redraw only if the cards were drawn for a different window geometry.
 ---
---- Whatever supplies that offset -- a centring plugin, a zen mode -- can change
---- it with no event incomm would otherwise care about, so this runs on the
---- cheap ones (a scroll, a resize, going idle) and compares two numbers before
---- doing any work.
+--- The width comes from whichever window showed the buffer at the time, and
+--- that is often not the one it ends up in: a picker previews the file in a
+--- narrow pane first, a sidebar or a centring plugin settles the layout after
+--- the file is open, the sign column grows once the signs are placed. And
+--- whatever supplies `card.offset` can change it with no event incomm would
+--- otherwise care about. So this runs on the cheap events (a window entered,
+--- resized or scrolled, going idle) and compares two numbers before doing any
+--- work.
 ---@param bufnr integer
-function M.check_offset(bufnr)
+function M.check_layout(bufnr)
   local t = tracked[bufnr]
   if not t or not vim.api.nvim_buf_is_loaded(bufnr) then
     return
   end
-  if render.offset_for(bufnr) ~= t.offset then
+  if layout_key(bufnr) ~= t.layout then
     M.render_buf(bufnr)
+  end
+end
+
+--- `check_layout` for every buffer shown in `wins`.
+---@param wins integer[]
+function M.check_windows(wins)
+  for _, win in ipairs(wins) do
+    if vim.api.nvim_win_is_valid(win) then
+      M.check_layout(vim.api.nvim_win_get_buf(win))
+    end
   end
 end
 
@@ -287,20 +310,15 @@ function M.attach(bufnr)
       end,
     })
   end
-  -- A resized window changes how the card wraps.
-  vim.api.nvim_create_autocmd("WinResized", {
+  -- The window's geometry can change under the cards without a resize of a
+  -- window showing this buffer (see `check_layout`). Resizes are handled
+  -- globally in `init.lua`: a buffer-local WinResized only fires when the
+  -- *first* resized window shows this buffer, so it misses a sidebar opening.
+  vim.api.nvim_create_autocmd({ "BufWinEnter", "WinScrolled", "WinEnter", "CursorHold" }, {
     group = augroup,
     buffer = bufnr,
     callback = function()
-      M.render_buf(bufnr)
-    end,
-  })
-  -- And a left margin that belongs to somebody else can change under us.
-  vim.api.nvim_create_autocmd({ "WinScrolled", "WinEnter", "CursorHold" }, {
-    group = augroup,
-    buffer = bufnr,
-    callback = function()
-      M.check_offset(bufnr)
+      M.check_layout(bufnr)
     end,
   })
 

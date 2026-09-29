@@ -66,7 +66,7 @@ end
 --- Columns available for a card in the first window showing `bufnr`.
 ---@param bufnr integer
 ---@return integer
-local function text_width(bufnr)
+function M.text_width(bufnr)
   local win = window_for(bufnr)
   if not win then
     return 80
@@ -217,7 +217,7 @@ function M.render(bufnr, svc, rel, live_positions)
   end
   state.apply_defaults(notes)
   local line_count = vim.api.nvim_buf_line_count(bufnr)
-  local width = text_width(bufnr)
+  local width = M.text_width(bufnr)
   local offset = M.offset_for(bufnr)
   local signs = config.options.signs
 

@@ -92,6 +92,15 @@ function M.setup(opts)
     end,
   })
 
+  -- A resize anywhere can change the columns a card may fill: check every
+  -- buffer in the resized windows, not just the first one's.
+  vim.api.nvim_create_autocmd("WinResized", {
+    group = augroup,
+    callback = function()
+      track.check_windows(vim.v.event.windows or {})
+    end,
+  })
+
   -- A colourscheme change re-establishes the links and repaints the cards.
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = augroup,

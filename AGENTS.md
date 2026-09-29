@@ -383,8 +383,11 @@ CLI -- it implements §11 directly. Module map (`lua/incomm/`):
 - `card.offset` (a number or `function(win, bufnr)`) is the extension point for
   anything that shifts the text away from the window's left edge — a centring
   plugin's inline margin is invisible to virtual lines, so the client tells
-  incomm how far right to hang its cards. It is re-read on scroll/resize/idle
-  and the cards redraw when the answer changes.
+  incomm how far right to hang its cards. It is re-read, together with the
+  window's text width, on scroll/resize/idle/`BufWinEnter`, and the cards
+  redraw when either changes (`track.check_layout`): both are baked into the
+  `virt_lines`, and the first window to show a buffer (a picker's preview, a
+  layout still settling) is often narrower than the one it ends up in.
 - **`watch.lua`** — libuv watches on `.incomm/` and `.git/HEAD`, plus a
   `FocusGained` re-sync; it watches the project root until `.incomm/` first
   appears, since the first writer may be the agent. **`actions.lua`** — one

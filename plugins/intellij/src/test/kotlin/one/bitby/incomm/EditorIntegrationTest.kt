@@ -257,6 +257,16 @@ class EditorIntegrationTest : BasePlatformTestCase() {
         val plain = service.addNote("v.txt", 1, 1, "plain", AUTHOR_USER, listOf("a"))
         assertEquals("private", service.find(private.id)!!.audience)
         assertEquals("agent", service.find(plain.id)!!.audience)
+
+        // Replies: the same, and without one a reply answers for the comment's audience.
+        assertTrue(manager.getAction("incomm.PrivateReply") is one.bitby.incomm.actions.PrivateReplyAction)
+        assertTrue(manager.getAction("incomm.ExternalReply") is one.bitby.incomm.actions.ExternalReplyAction)
+        assertTrue(manager.getAction("incomm.AgentExternalReply") is one.bitby.incomm.actions.AgentExternalReplyAction)
+        service.addReply(private.id, "inherits", AUTHOR_USER)
+        service.addReply(plain.id, "an aside", AUTHOR_USER, audience = "private")
+        service.addReply(plain.id, "for the MR", AUTHOR_USER, audience = "external")
+        assertEquals("private", service.find(private.id)!!.replies[0].audience)
+        assertEquals(listOf("private", "external"), service.find(plain.id)!!.replies.map { it.audience })
         service.clearAll()
         service.flushWrites()
     }

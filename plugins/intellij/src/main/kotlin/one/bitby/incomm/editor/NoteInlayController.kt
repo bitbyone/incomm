@@ -458,10 +458,12 @@ class NoteInlayController(
      * edit mode with the caret ready. Check saves the reply; cancel / Escape
      * discards it and the entry simply disappears.
      */
-    fun startReply(noteId: String) {
+    fun startReply(noteId: String, audience: String? = null) {
         val note = NotesService.getInstance(project).find(noteId) ?: return
-        startCompose(note.startLine, "new reply") { text ->
-            NotesService.getInstance(project).addReply(noteId, text, AUTHOR_USER)
+        // Say it when one was asked for, so a private answer is known to be one.
+        val subtitle = if (audience == null) "new reply" else "new reply \u00B7 " + Audience.label(audience)
+        startCompose(note.startLine, subtitle) { text ->
+            NotesService.getInstance(project).addReply(noteId, text, AUTHOR_USER, audience = audience)
             // Return the updated parent note so save() re-renders its card in
             // place (with the new reply nested) — no full refresh, no jump.
             NotesService.getInstance(project).find(noteId)

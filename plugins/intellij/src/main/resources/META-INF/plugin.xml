@@ -59,6 +59,16 @@
         <action id="incomm.StartAgentExternalThread"
                 class="one.bitby.incomm.actions.AddAgentExternalCommentAction"
                 icon="/icons/addComment.svg"/>
+        <!-- Reply with another audience than the comment's: the same, for answers. -->
+        <action id="incomm.PrivateReply"
+                class="one.bitby.incomm.actions.PrivateReplyAction"
+                icon="/icons/reply.svg"/>
+        <action id="incomm.ExternalReply"
+                class="one.bitby.incomm.actions.ExternalReplyAction"
+                icon="/icons/reply.svg"/>
+        <action id="incomm.AgentExternalReply"
+                class="one.bitby.incomm.actions.AgentExternalReplyAction"
+                icon="/icons/reply.svg"/>
 
         <action id="incomm.Reply"
                 class="one.bitby.incomm.actions.ReplyAction"

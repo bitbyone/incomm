@@ -256,11 +256,19 @@ class NotesService(private val project: Project) : Disposable {
      * A new reply starts with the audience its root comment has now, stored
      * explicitly; changing the root later never rewrites replies that exist.
      */
-    fun addReply(id: String, content: String, author: String, authorTitle: String? = null) = mutate(id) {
+    fun addReply(
+        id: String,
+        content: String,
+        author: String,
+        authorTitle: String? = null,
+        /** Who may see it; null = whoever sees the comment it answers. */
+        audience: String? = null,
+    ) = mutate(id) {
         val title = authorTitle ?: defaultAuthorTitle(author)
         it.replies.add(
             Reply(
-                id = newId(), author = author, authorTitle = title, audience = Audience.inheritedByReply(it.audience),
+                id = newId(), author = author, authorTitle = title,
+                audience = audience?.let { a -> Audience.stored(a) } ?: Audience.inheritedByReply(it.audience),
                 content = content, createdAt = nowUtc(),
             ),
         )

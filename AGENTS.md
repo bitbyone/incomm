@@ -305,6 +305,7 @@ Contextual (editor + gutter popup; enabled only when relevant; dynamic text wher
 | `incomm.StartThread` | Incomm: Start New Thread | file present; uses selection range or caret line |
 | `incomm.StartPrivateThread` / `StartExternalThread` / `StartAgentExternalThread` | Incomm: Start New Private / External / Agent + External Thread | as Start New Thread, with that audience (`AddCommentAction(audience)`); Find Action and Keymap only, not in the menus |
 | `incomm.Reply` | Incomm: Reply | caret in a thread's range |
+| `incomm.PrivateReply` / `ExternalReply` / `AgentExternalReply` | Incomm: Private / External / Agent + External Reply | as Reply, with that audience instead of the comment's (`ReplyAction(audience)`); Find Action and Keymap only |
 | `incomm.EditComment` | Incomm: Edit | caret in a **user**-authored thread **with no replies** (unambiguous target) |
 | `incomm.ResolveThread` | Incomm: Resolve/Reopen Thread | caret in a thread (resolve also hides card) |
 | `incomm.ToggleThread` | Incomm: Show/Hide Thread | caret in a thread |

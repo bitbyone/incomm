@@ -35,7 +35,11 @@ local function install_keymaps(spec)
     ce = { rhs = ":Incomm thread external<cr>", desc = "Start external thread", mode = { "n", "x" } },
     cb = { rhs = ":Incomm thread agent+external<cr>", desc = "Start agent + external thread", mode = { "n", "x" } },
     v = { rhs = actions.list, desc = "Thread details" },
-    r = { rhs = actions.reply, desc = "Reply to thread" },
+    -- r + r(eply), p(rivate), e(xternal), b(oth), as for c above.
+    rr = { rhs = "<cmd>Incomm reply<cr>", desc = "Reply to thread" },
+    rp = { rhs = "<cmd>Incomm reply private<cr>", desc = "Private reply" },
+    re = { rhs = "<cmd>Incomm reply external<cr>", desc = "External reply" },
+    rb = { rhs = "<cmd>Incomm reply agent+external<cr>", desc = "Agent + external reply" },
     e = { rhs = actions.edit, desc = "Edit comment" },
     x = { rhs = actions.resolve, desc = "Resolve / reopen thread" },
     t = { rhs = actions.toggle_thread, desc = "Show/hide thread" },

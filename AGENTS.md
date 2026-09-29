@@ -417,8 +417,10 @@ adding keys, a right-hand cell and a `<CR>` action. **Thread details** (`ui/thre
 (the dialog reopens on it afterwards), `d` deletes it (the root takes the thread), and h/l step its
 stored audience along its cycle (`model.next_audience` / `prev_audience`), saved at every step,
 as the IDE's *Thread Details* does. It redraws on `svc:on_change`. `:Incomm thread <audience>`
-starts a thread with that audience (`service:add_note(..., audience)`); the keymap set maps it as
-`<prefix>cp` / `ce` / `cb`.
+starts a thread with that audience (`service:add_note(..., audience)`), and `:Incomm reply
+<audience>` a reply (`service:add_reply(..., audience)`; without one a reply inherits its
+comment's). The keymap set maps them as `<prefix>cc` / `cp` / `ce` / `cb` and `rr` / `rp` / `re` /
+`rb`.
 The badge is drawn in the bubble's header line (it shrinks to `+external`, then disappears, when the
 explorer is narrow), so card height and `virt_lines` layout are unchanged.
 

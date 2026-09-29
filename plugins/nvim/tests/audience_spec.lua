@@ -643,7 +643,8 @@ T.test("the thread subcommand completes an audience, and nothing else takes one"
   T.eq(vim.fn.getcompletion("Incomm thread ex", "cmdline"), { "external" })
   T.ok(vim.tbl_contains(vim.fn.getcompletion("Incomm li", "cmdline"), "list"))
   T.ok(not vim.tbl_contains(vim.fn.getcompletion("Incomm ", "cmdline"), "audience"), "the old command is gone")
-  T.eq(vim.fn.getcompletion("Incomm reply ", "cmdline"), {}, "other subcommands take no argument")
+  T.eq(vim.fn.getcompletion("Incomm reply ", "cmdline"), { "agent", "agent+external", "external", "private" })
+  T.eq(vim.fn.getcompletion("Incomm resolve ", "cmdline"), {}, "other subcommands take no argument")
 end)
 
 -- ---- the explorer ---------------------------------------------------------------------

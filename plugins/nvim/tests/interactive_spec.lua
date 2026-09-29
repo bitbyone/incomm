@@ -686,4 +686,59 @@ T.test(":Incomm thread <audience> starts a thread only its audience sees", funct
   end)
 end)
 
+T.test(":Incomm reply <audience> answers for that audience only", function()
+  T.with_tmpdir(function(dir)
+    local bufnr, svc = open_fixture(dir)
+    local note = svc:add_note("src/main.go", 4, 4, "root")
+    svc:set_audience(note.id, nil, "agent+external")
+    track.refresh(bufnr)
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+
+    vim.cmd("Incomm reply private")
+    T.ok(vim.api.nvim_win_get_config((composer_win())).title[1][1]:find("· private", 1, true), "the composer says so")
+    compose("an aside")
+    vim.cmd("Incomm reply")
+    compose("inherits")
+    vim.cmd("Incomm reply external")
+    compose("for the MR only")
+    local replies = svc:find(note.id).replies
+    T.eq(vim.tbl_map(function(r) return r.audience end, replies), { "private", "agent+external", "external" })
+
+    -- It reaches the file as it is, not as the default.
+    svc:reload({ publish = false })
+    T.eq(svc:find(note.id).replies[1].audience, "private")
+
+    local notify = vim.notify
+    local said
+    vim.notify = function(msg) said = msg end
+    vim.cmd("Incomm reply nonsense")
+    vim.notify = notify
+    T.eq(composer_win(), nil)
+    T.ok(said and said:find("must be one of", 1, true), tostring(said))
+  end)
+end)
+
+T.test("the keymap set starts and answers threads for each audience on two keys", function()
+  local saved = vim.g.mapleader
+  vim.g.mapleader = " "
+  incomm.setup({ watch = false, keymaps = { prefix = "<leader>i" } })
+  local want = {
+    ["<leader>icc"] = ":Incomm thread<cr>",
+    ["<leader>icp"] = ":Incomm thread private<cr>",
+    ["<leader>irr"] = "<cmd>Incomm reply<cr>",
+    ["<leader>irp"] = "<cmd>Incomm reply private<cr>",
+    ["<leader>ire"] = "<cmd>Incomm reply external<cr>",
+    ["<leader>irb"] = "<cmd>Incomm reply agent+external<cr>",
+  }
+  for lhs, rhs in pairs(want) do
+    T.eq(vim.fn.maparg(lhs, "n"):lower(), rhs:lower(), lhs)
+  end
+  T.eq(vim.fn.maparg("<leader>ic", "n"), "", "nothing waits on a single key")
+  T.eq(vim.fn.maparg("<leader>ir", "n"), "")
+  for lhs in pairs(want) do
+    pcall(vim.keymap.del, "n", lhs)
+  end
+  vim.g.mapleader = saved
+end)
+
 service.reset()

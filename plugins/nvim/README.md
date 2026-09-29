@@ -68,7 +68,7 @@ the identically-named IntelliJ action.
 | Subcommand | What it does |
 |---|---|
 | `thread [audience]` | Start a thread on the cursor line, or on the range: `:'<,'>Incomm thread`. An audience (`private`, `agent`, `external`, `agent+external`) says who may see it; without one it is `agent` |
-| `reply` | Reply to the thread under the cursor |
+| `reply [audience]` | Reply to the thread under the cursor. Without an audience the reply is seen by whoever sees the comment it answers; with one (`:Incomm reply private`) by that audience |
 | `edit` | Edit one of your comments in the thread under the cursor |
 | `resolve` | Resolve / reopen the thread under the cursor (resolving collapses its card) |
 | `delete` | Delete the thread under the cursor, replies and all |
@@ -129,7 +129,7 @@ require("incomm").setup({ keymaps = { prefix = "<leader>i" } })
 ```
 
 That gives `<prefix>` + `cc` thread (`cp` private, `ce` external, `cb` agent +
-external) · `v` thread details · `r` reply · `e` edit · `x` resolve ·
+external) · `rr` reply (`rp`, `re`, `rb` likewise) · `v` thread details · `e` edit · `x` resolve ·
 `t` toggle · `d` delete · `a` all · `R` resolved · `i` explorer · `f` explorer
 in file · `l` reload · `s` status · `n`/`p` next/previous, plus `]i` / `[i`.
 Pass `keys` alongside `prefix` to choose your own suffixes, or map the API
@@ -301,7 +301,8 @@ arrows are `audience.arrows`.
 
 A new thread can start with any audience: `:Incomm thread private` (or
 `:'<,'>Incomm thread external`, …) opens the composer for a thread only that
-audience sees, and says so in its title.
+audience sees, and says so in its title. A reply can too: `:Incomm reply
+private` is an aside the agent never sees, in a thread it does.
 
 ### The comment dialog
 

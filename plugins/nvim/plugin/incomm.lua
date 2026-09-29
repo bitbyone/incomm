@@ -26,7 +26,11 @@ subcommands.thread = function(opts)
     opts.fargs[2]
   )
 end
-subcommands.reply = act("reply")
+-- `:Incomm reply private` (or any audience) says who may see the reply;
+-- without one it is seen by whoever sees the comment it answers.
+subcommands.reply = function(opts)
+  require("incomm.actions").reply(opts.fargs[2])
+end
 subcommands.edit = act("edit")
 -- `:Incomm list`: thread details -- audience (h/l), edit (e), delete (d).
 subcommands.list = act("list")
@@ -88,8 +92,8 @@ end, {
     local second = #words > 2 or (#words == 2 and line:match("%s$"))
     local candidates = names
     if second then
-      -- Only `thread` takes an argument: who may see the new thread.
-      candidates = words[2] == "thread" and require("incomm.model").AUDIENCE_CYCLE or {}
+      -- Only `thread` and `reply` take an argument: who may see what they write.
+      candidates = (words[2] == "thread" or words[2] == "reply") and require("incomm.model").AUDIENCE_CYCLE or {}
     end
     return vim.tbl_filter(function(name)
       return name:find(lead, 1, true) == 1

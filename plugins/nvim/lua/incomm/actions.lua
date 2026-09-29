@@ -65,6 +65,28 @@ end
 
 -- ---- creating -------------------------------------------------------------
 
+--- Whether `audience` is one (nil counts: it means the default), complaining if not.
+---@param audience? string
+---@return boolean
+local function valid_audience(audience)
+  if audience and model.normalize_audience(audience) ~= audience then
+    notify("audience must be one of " .. table.concat(model.AUDIENCE_CYCLE, ", "), vim.log.levels.ERROR)
+    return false
+  end
+  return true
+end
+
+--- ` · private` for a composer title, when an audience was asked for: a private
+--- note should be known to be one before it is written. The default says nothing.
+---@param audience? string
+---@return string
+local function audience_suffix(audience)
+  if not audience or audience == model.AUDIENCE_AGENT then
+    return ""
+  end
+  return " · " .. require("incomm.ui.audience").label(audience)
+end
+
 --- Start a thread on the current line, on `line1..line2` when a range was given
 --- (`:'<,'>Incomm thread`), or on the visual selection when called straight
 --- from a visual-mode mapping.
@@ -76,8 +98,7 @@ function M.start_thread(line1, line2, audience)
   if not svc or not svc:check_writable() then
     return
   end
-  if audience and model.normalize_audience(audience) ~= audience then
-    notify("audience must be one of " .. table.concat(model.AUDIENCE_CYCLE, ", "), vim.log.levels.ERROR)
+  if not valid_audience(audience) then
     return
   end
   local s, e
@@ -98,8 +119,7 @@ function M.start_thread(line1, line2, audience)
     title = string.format(
       "incomm: new thread on %s%s",
       s == e and ("L" .. s) or ("L" .. s .. "-" .. e),
-      -- Say it when it is not the default, so a private note is known to be one.
-      (audience and audience ~= model.AUDIENCE_AGENT) and (" · " .. require("incomm.ui.audience").label(audience)) or ""
+      audience_suffix(audience)
     ),
     on_submit = function(content)
       -- Positions may have drifted while the composer was open; take them from
@@ -113,15 +133,16 @@ function M.start_thread(line1, line2, audience)
 end
 
 --- Reply to the thread under the cursor.
-function M.reply()
+---@param audience? string who may see it; by default the audience of the comment it answers
+function M.reply(audience)
   local note, svc = note_under_cursor()
-  if not note or not svc:check_writable() then
+  if not note or not svc:check_writable() or not valid_audience(audience) then
     return
   end
   composer.open({
-    title = "incomm: reply to " .. format.range(note),
+    title = "incomm: reply to " .. format.range(note) .. audience_suffix(audience),
     on_submit = function(content)
-      svc:add_reply(note.id, content)
+      svc:add_reply(note.id, content, nil, nil, audience)
       ui_state.set_hidden(note.id, false)
     end,
   })

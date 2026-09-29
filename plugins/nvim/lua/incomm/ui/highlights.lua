@@ -47,6 +47,10 @@ local links = {
   IncommAudiencePending = "DiagnosticWarn",
   IncommAudiencePublished = "DiagnosticOk",
   IncommAudiencePrivate = "DiagnosticHint",
+  -- The box of your own comment that is meant for the merge request, and of one
+  -- only you see. An agent's box is always the agent's colour: who wrote it wins.
+  IncommExternal = "Statement", -- purple in most schemes; lightened for the box
+  IncommPrivate = "Comment", -- grey
 }
 
 --- The resolved attributes of a highlight group, following links.
@@ -98,6 +102,8 @@ local function derive()
     -- still legible, just not tuned to the theme.
     vim.api.nvim_set_hl(0, "IncommCard", { link = "Normal" })
     vim.api.nvim_set_hl(0, "IncommCardLine", { link = "IncommMuted" })
+    vim.api.nvim_set_hl(0, "IncommBorderExternal", { link = "IncommExternal" })
+    vim.api.nvim_set_hl(0, "IncommBorderPrivate", { link = "IncommPrivate" })
     for _, author in ipairs({ "User", "Agent" }) do
       vim.api.nvim_set_hl(0, "IncommBorder" .. author, { link = "Incomm" .. author })
       vim.api.nvim_set_hl(0, "IncommName" .. author, { link = "Incomm" .. author })
@@ -160,6 +166,12 @@ local function derive()
     vim.api.nvim_set_hl(0, "IncommBadge" .. badge, { fg = blend(accent, surface, badge == "Pending" and 0.8 or 0.6) })
   end
 
+  -- Your own comment for the merge request: a light purple box; one only you
+  -- see: a grey one. Both as strong as an author's box, so they read as kinds.
+  local external = color_of("IncommExternal", "fg") or accents.User
+  vim.api.nvim_set_hl(0, "IncommBorderExternal", { fg = blend(blend(external, text, 0.7), surface, 0.7) })
+  vim.api.nvim_set_hl(0, "IncommBorderPrivate", { fg = blend(color_of("IncommPrivate", "fg") or muted, surface, 0.6) })
+
   for author, accent in pairs(accents) do
     -- The box is what says who wrote this, so it keeps a decent share of the
     -- accent; everything inside it is pulled back toward the editor.
@@ -206,6 +218,27 @@ M.derive = derive
 ---@return string
 function M.author_suffix(author)
   return author == "agent" and "Agent" or "User"
+end
+
+--- The border suffix of one bubble: the agent's words are always the agent's
+--- colour; your own are coloured by who may see them -- external (anything
+--- meant for the merge request), private, or plain (you and the agent).
+---@param author string
+---@param audience? string the effective audience (a private root makes its replies private)
+---@return "Agent"|"User"|"External"|"Private"
+function M.border_suffix(author, audience)
+  if author == "agent" then
+    return "Agent"
+  end
+  local model = require("incomm.model")
+  local a = model.normalize_audience(audience)
+  if a == model.AUDIENCE_PRIVATE then
+    return "Private"
+  end
+  if model.includes_external(a) then
+    return "External"
+  end
+  return "User"
 end
 
 --- The bar/name highlight for one author.

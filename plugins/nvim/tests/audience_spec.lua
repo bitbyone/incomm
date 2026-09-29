@@ -195,6 +195,29 @@ T.test("the audience floats to the right edge of the header, name and time stay 
   T.ok(plain:find("agent │$"), "the default badge is at the right edge: " .. plain)
 end)
 
+T.test("the box is the agent's colour for the agent, and says who sees your own", function()
+  local hl = require("incomm.ui.highlights")
+  -- The author wins: the agent's box is the agent's whatever the audience.
+  for _, a in ipairs({ "agent", "agent+external", "external", "private" }) do
+    T.eq(hl.border_suffix("agent", a), "Agent", a)
+  end
+  T.eq(hl.border_suffix("user", "agent"), "User")
+  T.eq(hl.border_suffix("user", nil), "User", "absent is agent")
+  T.eq(hl.border_suffix("user", "agent+external"), "External")
+  T.eq(hl.border_suffix("user", "external"), "External")
+  T.eq(hl.border_suffix("user", "private"), "Private")
+  T.eq(hl.border_suffix("user", "team"), "Private", "an unknown audience is private")
+
+  local rows = bubble.build({ author = "user", content = "x", width = 30, audience = "external" })
+  T.eq(rows[1][#rows[1]][2], "IncommBorderExternal", "the top edge")
+  rows = bubble.build({ author = "agent", content = "x", width = 30, audience = "private" })
+  T.eq(rows[1][#rows[1]][2], "IncommBorderAgent")
+  hl.setup()
+  for _, group in ipairs({ "IncommBorderExternal", "IncommBorderPrivate" }) do
+    T.ok(next(vim.api.nvim_get_hl(0, { name = group })) ~= nil, group .. " is defined")
+  end
+end)
+
 T.test("a badge never changes a bubble's height or breaks its box", function()
   local function build(audience, width, title)
     return bubble.build({

@@ -39,7 +39,10 @@ The plugins and the CLI are **independent builds** that only agree on the shared
   §11 and implemented **identically** in `Anchoring.kt` (Kotlin), `internal/anchor`
   (Go) and `lua/incomm/anchor.lua` (Lua); the shared fixtures enforce parity.
 - **Authors & colors convention:** `user` = **blue**, `agent` = **green** throughout the
-  UI; a note's state is colour-coded too (open = blue, resolved = green, orphaned = red).
+  UI. A comment's box (Neovim border, IntelliJ bubble fill) goes by `Audience.tone` /
+  `highlights.border_suffix`: the agent's is always green (the author wins), your own is blue for
+  `agent`, **light purple** for anything including `external`, **grey** for `private` (the
+  effective audience, so replies under a private root are grey too); a note's state is colour-coded too (open = blue, resolved = green, orphaned = red).
   All colours come from the active IDE theme (`ui/IncommColors.kt`) — never hard-coded — and
   can be **overridden in *Settings | Tools | Incomm*** (bubble backgrounds + name colours per
   author, comment-text and date/status colours), which also picks the **timestamp format**.

@@ -215,10 +215,11 @@ resolve to:
 | `IncommContent` | `Normal` | comment text |
 | `IncommMuted` | `Comment` | timestamps, locations |
 | `IncommAudiencePending` / `IncommAudiencePublished` / `IncommAudiencePrivate` | `DiagnosticWarn` / `DiagnosticOk` / `DiagnosticHint` | the hue of an audience badge's state word, and of `private` |
+| `IncommExternal` / `IncommPrivate` | `Statement` / `Comment` | the box of your own comment meant for the merge request (lightened into a light purple), and of one only you see (grey) |
 | `IncommSelection` / `IncommPreviewLine` | `Visual` / `CursorLine` | the explorer's selected row, and the anchored lines in its code preview |
 
 From those it derives the bubble borders, the dimmed body text, the calmed
-state words and gutter signs: `IncommBorder{User,Agent}`, `IncommName*`,
+state words and gutter signs: `IncommBorder{User,Agent,External,Private}`, `IncommName*`,
 `IncommTime*`, `IncommText*`, `IncommCardState*`, `IncommSign*`, plus
 `IncommCard` / `IncommCardLine` for the little header tab. Only orphaned keeps
 its full strength — it is the state that means something needs doing.

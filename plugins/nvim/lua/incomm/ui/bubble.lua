@@ -102,7 +102,8 @@ end
 ---@return table[][] rows
 function M.build(opts)
   local suffix = hl.author_suffix(opts.author)
-  local border_hl = "IncommBorder" .. suffix
+  -- The box: who wrote it, and for your own words who may see them.
+  local border_hl = "IncommBorder" .. hl.border_suffix(opts.author, opts.audience)
   local indent = opts.indent or 0
   local width = math.max(opts.width, 16)
   local inner = width - 2 -- what sits between the two border columns

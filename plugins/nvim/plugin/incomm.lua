@@ -17,16 +17,19 @@ local function act(name)
 end
 
 subcommands.thread = function(opts)
-  -- `:'<,'>Incomm thread` anchors the thread to the selected lines.
+  -- `:'<,'>Incomm thread` anchors the thread to the selected lines, and
+  -- `:Incomm thread private` (or any audience) says who may see it.
   local has_range = opts.range and opts.range > 0
-  require("incomm.actions").start_thread(has_range and opts.line1 or nil, has_range and opts.line2 or nil)
+  require("incomm.actions").start_thread(
+    has_range and opts.line1 or nil,
+    has_range and opts.line2 or nil,
+    opts.fargs[2]
+  )
 end
 subcommands.reply = act("reply")
 subcommands.edit = act("edit")
--- `:Incomm audience` steps the cycle; `:Incomm audience private` names the target.
-subcommands.audience = function(opts)
-  require("incomm.actions").audience(opts.fargs[2])
-end
+-- `:Incomm list`: thread details -- audience (h/l), edit (e), delete (d).
+subcommands.list = act("list")
 subcommands.resolve = act("resolve")
 subcommands.delete = act("delete_thread")
 subcommands["delete-comment"] = act("delete_comment")
@@ -85,8 +88,8 @@ end, {
     local second = #words > 2 or (#words == 2 and line:match("%s$"))
     local candidates = names
     if second then
-      -- Only `audience` takes an argument.
-      candidates = words[2] == "audience" and require("incomm.model").AUDIENCE_CYCLE or {}
+      -- Only `thread` takes an argument: who may see the new thread.
+      candidates = words[2] == "thread" and require("incomm.model").AUDIENCE_CYCLE or {}
     end
     return vim.tbl_filter(function(name)
       return name:find(lead, 1, true) == 1

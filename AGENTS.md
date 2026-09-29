@@ -395,9 +395,16 @@ CLI -- it implements §11 directly. Module map (`lua/incomm/`):
   function per IDE action, exposed as `:Incomm <subcommand>` in `plugin/`.
 
 **Audience** (`ui/audience.lua`, `model.lua`, `service:set_audience` / `set_thread_audience`).
-The cursor row belongs to a thread, so `:Incomm audience` asks which comment (root, each reply, or
-"whole thread"; skipped for a single comment) and steps it through the same cycle as the IDE;
-`:Incomm audience <state>` names the target state directly. The explorer has the same flow on `a`.
+Anything that acts on one comment of a thread (`:Incomm list`, `edit`, `delete-comment`, the
+explorer's `a`/`e`) picks it in **`ui/comments.lua`**: a float in navigation mode (never
+`vim.ui.select`, whose pickers open in their filter prompt), two lines per comment, the caller
+adding keys, a right-hand cell and a `<CR>` action. **Thread details** (`ui/thread.lua`,
+`:Incomm list`, the explorer's `a`) is that dialog with three jobs: `e` edits the selected comment
+(the dialog reopens on it afterwards), `d` deletes it (the root takes the thread), and h/l step its
+stored audience along its cycle (`model.next_audience` / `prev_audience`), saved at every step,
+as the IDE's *Thread Details* does. It redraws on `svc:on_change`. `:Incomm thread <audience>`
+starts a thread with that audience (`service:add_note(..., audience)`); the keymap set maps it as
+`<prefix>cp` / `ce` / `cb`.
 The badge is drawn in the bubble's header line (it shrinks to `+external`, then disappears, when the
 explorer is narrow), so card height and `virt_lines` layout are unchanged.
 

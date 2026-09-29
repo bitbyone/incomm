@@ -188,9 +188,29 @@ end
 ---@param note_id string
 ---@param reply_id string? nil for the thread's first comment
 ---@param audience string private | agent | external | agent+external
+---
+--- Refused for an audience the comment may not take (`model.audience_cycle`):
+--- a published comment stays on the forge, and a thread with a published reply
+--- cannot be made private.
 ---@return boolean changed
 function Service:set_audience(note_id, reply_id, audience)
   if self.blocked or model.normalize_audience(audience) ~= audience then
+    return false
+  end
+  local current = self:find(note_id)
+  if not current then
+    return false
+  end
+  local comment = current
+  if reply_id then
+    comment = nil
+    for _, reply in ipairs(current.replies) do
+      if reply.id == reply_id then
+        comment = reply
+      end
+    end
+  end
+  if not comment or not model.audience_allowed(current, comment, audience) then
     return false
   end
   local hit = false
@@ -213,22 +233,34 @@ function Service:set_audience(note_id, reply_id, audience)
   return hit
 end
 
---- Set the audience of every comment in a thread in one write.
+--- Set the audience of every comment in a thread in one write. A comment that
+--- may not take it (see `set_audience`) keeps its own.
 ---@param note_id string
 ---@param audience string
----@return boolean changed
+---@return boolean changed, integer kept how many comments kept their audience
 function Service:set_thread_audience(note_id, audience)
   if self.blocked or model.normalize_audience(audience) ~= audience then
-    return false
+    return false, 0
   end
-  return self:mutate(note_id, function(note)
+  local kept = 0
+  local changed = self:mutate(note_id, function(note)
     local stored = model.stored_audience(audience)
-    note.audience = stored
-    for _, reply in ipairs(note.replies) do
-      reply.audience = stored
+    local function apply(comment)
+      if model.audience_allowed(note, comment, audience) then
+        comment.audience = stored
+      else
+        kept = kept + 1
+      end
     end
+    -- The replies first: whether the root may be private depends on them, and
+    -- they are not what is being changed.
+    for _, reply in ipairs(note.replies) do
+      apply(reply)
+    end
+    apply(note)
     note.updatedAt = model.now_utc()
   end)
+  return changed, kept
 end
 
 ---@param rel string
@@ -522,6 +554,17 @@ end
 
 -- ---- mutations ------------------------------------------------------------
 
+---@param note incomm.Note
+---@param reply_id string
+---@return incomm.Reply?
+local function find_reply(note, reply_id)
+  for _, reply in ipairs(note.replies) do
+    if reply.id == reply_id then
+      return reply
+    end
+  end
+end
+
 ---@param id string
 ---@param fn fun(note: incomm.Note)
 ---@return boolean
@@ -543,7 +586,8 @@ end
 ---@param author? string defaults to `user` -- a human is typing in the editor
 ---@param author_title? string
 ---@return incomm.Note
-function Service:add_note(rel, start_line, end_line, content, author, author_title)
+---@param audience? string who may see it; agent by default
+function Service:add_note(rel, start_line, end_line, content, author, author_title, audience)
   author = author or model.AUTHOR_USER
   local lines = self:lines_for(rel) or {}
   local now = model.now_utc()
@@ -558,7 +602,7 @@ function Service:add_note(rel, start_line, end_line, content, author, author_tit
     orphaned = false,
     author = author,
     authorTitle = author_title or (author == model.AUTHOR_USER and self:default_author_title() or nil),
-    audience = model.AUDIENCE_AGENT,
+    audience = model.stored_audience(audience or model.AUDIENCE_AGENT),
     createdAt = now,
     updatedAt = now,
     replies = {},
@@ -571,6 +615,11 @@ end
 ---@param id string
 ---@param content string
 function Service:update_content(id, content)
+  -- What is on the merge request already is edited there (`model.can_edit`).
+  local current = self:find(id)
+  if current and model.has_source(current) then
+    return false
+  end
   return self:mutate(id, function(note)
     note.content = content
     note.updatedAt = model.now_utc()
@@ -601,6 +650,11 @@ end
 ---@param reply_id string
 ---@param content string
 function Service:update_reply(note_id, reply_id, content)
+  local current = self:find(note_id)
+  local target = current and find_reply(current, reply_id)
+  if not target or model.has_source(target) then
+    return false -- gone, or on the merge request: edited there
+  end
   return self:mutate(note_id, function(note)
     for _, reply in ipairs(note.replies) do
       if reply.id == reply_id then
@@ -615,6 +669,11 @@ end
 ---@param note_id string
 ---@param reply_id string
 function Service:remove_reply(note_id, reply_id)
+  local current = self:find(note_id)
+  local target = current and find_reply(current, reply_id)
+  if not target or not model.can_delete(current, target) then
+    return false -- gone, or on the merge request: deleted there
+  end
   return self:mutate(note_id, function(note)
     for i, reply in ipairs(note.replies) do
       if reply.id == reply_id then
@@ -638,6 +697,11 @@ end
 ---@param id string
 ---@return boolean
 function Service:remove_note(id)
+  -- A thread with anything on the merge request stays (`model.can_delete`).
+  local current = self:find(id)
+  if current and not model.can_delete(current, current) then
+    return false
+  end
   if not model.remove(self.model, id) then
     return false
   end

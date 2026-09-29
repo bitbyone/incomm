@@ -662,17 +662,8 @@ function M.open(svc, rel)
   end)
   map(list, "e", function()
     local note = selected()
-    if note and note.author == require("incomm.model").AUTHOR_USER then
-      composer.open({
-        title = "incomm: edit comment",
-        text = note.content,
-        anchor = "center",
-        on_submit = function(content)
-          svc:update_content(note.id, content)
-        end,
-      })
-    else
-      vim.notify("incomm: only your own comments are editable", vim.log.levels.WARN)
+    if note then
+      require("incomm.actions").edit_comment(svc, note, "center")
     end
   end)
   map(list, "x", function()
@@ -684,21 +675,24 @@ function M.open(svc, rel)
   map(list, "a", function()
     local note = selected()
     if note then
-      require("incomm.ui.audience").change(svc, note)
+      require("incomm.ui.thread").open(svc, note)
     end
   end)
-  map(list, "d", function()
+  local function delete_selected()
     local note = selected()
-    if note then
-      svc:remove_note(note.id)
+    if not note then
+      return
     end
-  end)
-  map(list, "<Del>", function()
-    local note = selected()
-    if note then
-      svc:remove_note(note.id)
+    -- A thread with anything on the merge request stays.
+    local ok, why = require("incomm.model").can_delete(note, note)
+    if not ok then
+      vim.notify("incomm: cannot delete this thread: " .. why, vim.log.levels.WARN)
+      return
     end
-  end)
+    svc:remove_note(note.id)
+  end
+  map(list, "d", delete_selected)
+  map(list, "<Del>", delete_selected)
 
   -- The IDE's ⌘O / ⌘R / ⌘X checkboxes.
   map(list, "<C-o>", function() toggle_filter("open") end)
@@ -784,9 +778,9 @@ function M.help(self)
     { "j / k", "next / previous thread" },
     { "<CR>", "go to the code" },
     { "r", "reply" },
-    { "e", "edit your comment" },
+    { "e", "edit one of your comments" },
     { "x", "resolve / reopen" },
-    { "a", "change who sees a comment" },
+    { "a", "thread details: audience, edit, delete" },
     { "d", "delete the thread" },
     { "/", "search" },
     { "<C-o>", "show open threads" },

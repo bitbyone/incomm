@@ -21,6 +21,7 @@
 -- counterpart: the CLI exposes re-anchoring, and thread-to-thread motion is how
 -- a Vim user navigates what the IDE's mouse reaches for.
 
+local comments = require("incomm.ui.comments")
 local composer = require("incomm.ui.composer")
 local config = require("incomm.config")
 local format = require("incomm.ui.format")
@@ -69,9 +70,14 @@ end
 --- from a visual-mode mapping.
 ---@param line1? integer
 ---@param line2? integer
-function M.start_thread(line1, line2)
+---@param audience? string who may see it: private, agent (the default), external or agent+external
+function M.start_thread(line1, line2, audience)
   local svc, rel, bufnr = current()
   if not svc or not svc:check_writable() then
+    return
+  end
+  if audience and model.normalize_audience(audience) ~= audience then
+    notify("audience must be one of " .. table.concat(model.AUDIENCE_CYCLE, ", "), vim.log.levels.ERROR)
     return
   end
   local s, e
@@ -89,12 +95,17 @@ function M.start_thread(line1, line2)
     e = s
   end
   composer.open({
-    title = string.format("incomm: new thread on %s%s", s == e and ("L" .. s) or ("L" .. s .. "-" .. e), ""),
+    title = string.format(
+      "incomm: new thread on %s%s",
+      s == e and ("L" .. s) or ("L" .. s .. "-" .. e),
+      -- Say it when it is not the default, so a private note is known to be one.
+      (audience and audience ~= model.AUDIENCE_AGENT) and (" · " .. require("incomm.ui.audience").label(audience)) or ""
+    ),
     on_submit = function(content)
       -- Positions may have drifted while the composer was open; take them from
       -- the live marks, not from what the model last stored.
       track.flush(bufnr)
-      local note = svc:add_note(rel, s, e, content)
+      local note = svc:add_note(rel, s, e, content, nil, nil, audience)
       ui_state.set_hidden(note.id, false)
       notify(string.format("thread %s added on %s", note.id, format.range(note)))
     end,
@@ -118,51 +129,34 @@ end
 
 -- ---- editing --------------------------------------------------------------
 
---- Every message of a thread, as pickable entries.
+--- Edit one of your comments of `note`: straight into the composer when there
+--- is only one, otherwise the comment dialog first. Only `user`-authored
+--- messages are editable -- the IDE holds the same line: an agent's words are
+--- the agent's -- and not what is on the merge request (`model.can_edit`).
+---@param svc incomm.Service
 ---@param note incomm.Note
----@return table[]
-local function messages(note)
-  local out = {
-    {
-      label = string.format("%s: %s", format.author(note.author, note.authorTitle), format.preview(note.content, 60)),
-      author = note.author,
-      content = note.content,
-      reply_id = nil,
-    },
-  }
-  for _, reply in ipairs(note.replies) do
-    out[#out + 1] = {
-      label = string.format("  %s: %s", format.author(reply.author, reply.authorTitle), format.preview(reply.content, 60)),
-      author = reply.author,
-      content = reply.content,
-      reply_id = reply.id,
-    }
-  end
-  return out
-end
-
---- Edit a comment in place. Only `user`-authored messages are editable -- the
---- IDE holds the same line: an agent's words are the agent's.
-function M.edit()
-  local note, svc = note_under_cursor()
-  if not note or not svc:check_writable() then
+---@param anchor? "cursor"|"center" where the composer opens
+function M.edit_comment(svc, note, anchor)
+  if not svc:check_writable() then
     return
   end
-  local editable = vim.tbl_filter(function(m)
-    return m.author == model.AUTHOR_USER
-  end, messages(note))
-  if #editable == 0 then
-    notify("nothing of yours to edit in this thread", vim.log.levels.WARN)
+  local function editable(row)
+    return row.editable
+  end
+  local mine = vim.tbl_filter(editable, comments.rows(note))
+  if #mine == 0 then
+    notify("nothing of yours to edit in this thread (what is on the merge request is edited there)", vim.log.levels.WARN)
     return
   end
 
-  local function do_edit(entry)
+  local function do_edit(row)
     composer.open({
       title = "incomm: edit comment",
-      text = entry.content,
+      text = row.content,
+      anchor = anchor,
       on_submit = function(content)
-        if entry.reply_id then
-          svc:update_reply(note.id, entry.reply_id, content)
+        if row.reply_id then
+          svc:update_reply(note.id, row.reply_id, content)
         else
           svc:update_content(note.id, content)
         end
@@ -170,62 +164,76 @@ function M.edit()
     })
   end
 
-  if #editable == 1 then
-    do_edit(editable[1])
+  if #mine == 1 then
+    do_edit(mine[1])
     return
   end
-  vim.ui.select(editable, {
-    prompt = "incomm: edit which comment?",
-    format_item = function(item)
-      return item.label
-    end,
-  }, function(choice)
-    if choice then
-      do_edit(choice)
-    end
-  end)
+  comments.open({
+    svc = svc,
+    note = note,
+    title = "edit  " .. format.range(note),
+    footer = "j/k comment · ⏎ edit · esc cancel",
+    filter = editable,
+    on_choose = do_edit,
+  })
+end
+
+--- Edit a comment of the thread under the cursor.
+function M.edit()
+  local note, svc = note_under_cursor()
+  if not note then
+    return
+  end
+  M.edit_comment(svc, note)
 end
 
 --- Delete a single message: the original comment (and with it the thread) or
---- one reply.
+--- one reply. What is on the merge request is not offered (`model.can_delete`).
 function M.delete_comment()
   local note, svc = note_under_cursor()
   if not note or not svc:check_writable() then
     return
   end
-  local entries = messages(note)
-  if #entries == 1 then
+  if #note.replies == 0 then
     M.delete_thread()
     return
   end
-  vim.ui.select(entries, {
-    prompt = "incomm: delete which comment?",
-    format_item = function(item)
-      return item.label
+  local function deletable(row)
+    return row.deletable
+  end
+  if #vim.tbl_filter(deletable, comments.rows(note)) == 0 then
+    notify("nothing here can be deleted: it is on the merge request", vim.log.levels.WARN)
+    return
+  end
+  comments.open({
+    svc = svc,
+    note = note,
+    title = "delete  " .. format.range(note),
+    footer = "j/k comment · ⏎ delete · esc cancel",
+    filter = deletable,
+    on_choose = function(row)
+      if row.reply_id then
+        svc:remove_reply(note.id, row.reply_id)
+      else
+        -- The original takes its thread with it.
+        svc:remove_note(note.id)
+        ui_state.set_hidden(note.id, false)
+        notify("deleted thread " .. note.id)
+      end
     end,
-  }, function(choice)
-    if not choice then
-      return
-    end
-    if choice.reply_id then
-      svc:remove_reply(note.id, choice.reply_id)
-    else
-      M.delete_thread()
-    end
-  end)
+  })
 end
 
--- ---- audience -------------------------------------------------------------
+-- ---- thread details -------------------------------------------------------
 
---- Change who may see a comment of the thread under the cursor: one step along
---- agent -> agent + external -> external -> private, or straight to `audience`.
----@param audience? string a named audience instead of the next step
-function M.audience(audience)
+--- Thread details for the thread under the cursor: every comment, with h/l to
+--- change who sees it, e to edit it and d to delete it.
+function M.list()
   local note, svc = note_under_cursor()
   if not note or not svc:check_writable() then
     return
   end
-  require("incomm.ui.audience").change(svc, note, audience)
+  require("incomm.ui.thread").open(svc, note)
 end
 
 -- ---- thread state ---------------------------------------------------------
@@ -267,6 +275,11 @@ end
 function M.delete_thread()
   local note, svc = note_under_cursor()
   if not note or not svc:check_writable() then
+    return
+  end
+  local ok, why = model.can_delete(note, note)
+  if not ok then
+    notify("cannot delete this thread: " .. why, vim.log.levels.WARN)
     return
   end
   svc:remove_note(note.id)

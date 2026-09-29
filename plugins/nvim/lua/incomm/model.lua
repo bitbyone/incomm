@@ -205,17 +205,115 @@ function M.normalize_audience(audience)
   return M.AUDIENCE_PRIVATE
 end
 
---- The audience one step on in the cycle from a stored one.
----@param audience string?
----@return string
-function M.next_audience(audience)
-  local current = M.normalize_audience(audience)
-  for i, value in ipairs(M.AUDIENCE_CYCLE) do
-    if value == current then
-      return M.AUDIENCE_CYCLE[i % #M.AUDIENCE_CYCLE + 1]
+--- What a published comment may be: it is on the forge, so it can be hidden from
+--- the agent but never taken off the forge (agent-only or private).
+M.AUDIENCE_PUBLISHED_CYCLE = { M.AUDIENCE_BOTH, M.AUDIENCE_EXTERNAL }
+
+--- A thread's own comment while one of its replies is published: private would
+--- hide that reply too.
+M.AUDIENCE_SHARED_CYCLE = { M.AUDIENCE_AGENT, M.AUDIENCE_BOTH, M.AUDIENCE_EXTERNAL }
+
+--- Whether a comment came from the forge or was published to it: it has a
+--- `source` at all (the CLI and the IDE draw the same line).
+---@param comment incomm.Note|incomm.Reply
+---@return boolean
+function M.has_source(comment)
+  return type(comment.source) == "table"
+end
+
+--- Whether any reply of `root` came from or went to the forge.
+---@param root incomm.Note
+---@return boolean
+local function has_published_reply(root)
+  for _, reply in ipairs(root.replies or {}) do
+    if M.has_source(reply) then
+      return true
     end
   end
-  return M.AUDIENCE_AGENT
+  return false
+end
+
+--- The audiences `comment` of the thread `root` may take, in cycle order.
+---@param root incomm.Note
+---@param comment incomm.Note|incomm.Reply the root itself or one of its replies
+---@return string[]
+function M.audience_cycle(root, comment)
+  if M.has_source(comment) then
+    return M.AUDIENCE_PUBLISHED_CYCLE
+  end
+  if comment == root and has_published_reply(root) then
+    return M.AUDIENCE_SHARED_CYCLE
+  end
+  return M.AUDIENCE_CYCLE
+end
+
+--- Whether `comment` may be edited here: your own words, and not what is on the
+--- forge already (the text there would no longer match).
+---@param root incomm.Note
+---@param comment incomm.Note|incomm.Reply
+---@return boolean ok, string? why not
+function M.can_edit(root, comment)
+  if comment.author ~= M.AUTHOR_USER then
+    return false, "only your own comments are editable"
+  end
+  if M.has_source(comment) then
+    return false, "it is on the merge request: edit it there"
+  end
+  return true
+end
+
+--- Whether `comment` may be deleted here: not what is on the forge, and not a
+--- thread's own comment while a reply of it is (that would take the reply too).
+---@param root incomm.Note
+---@param comment incomm.Note|incomm.Reply
+---@return boolean ok, string? why not
+function M.can_delete(root, comment)
+  if M.has_source(comment) then
+    return false, "it is on the merge request: delete it there"
+  end
+  if comment == root and has_published_reply(root) then
+    return false, "a reply of it is on the merge request"
+  end
+  return true
+end
+
+---@param root incomm.Note
+---@param comment incomm.Note|incomm.Reply
+---@param audience string
+---@return boolean
+function M.audience_allowed(root, comment, audience)
+  return vim.tbl_contains(M.audience_cycle(root, comment), audience)
+end
+
+---@param audience string?
+---@param cycle string[]
+---@param delta integer
+---@return string
+local function step(audience, cycle, delta)
+  local current = M.normalize_audience(audience)
+  for i, value in ipairs(cycle) do
+    if value == current then
+      return cycle[(i - 1 + delta) % #cycle + 1]
+    end
+  end
+  -- Not a value this comment may have (an older file): the nearest end.
+  return delta > 0 and cycle[1] or cycle[#cycle]
+end
+
+--- The audience one step on in `cycle` (the full one by default) from a stored one.
+---@param audience string?
+---@param cycle? string[] see `audience_cycle`
+---@return string
+function M.next_audience(audience, cycle)
+  return step(audience, cycle or M.AUDIENCE_CYCLE, 1)
+end
+
+--- The audience one step back in `cycle` (the full one by default) from a stored one.
+---@param audience string?
+---@param cycle? string[] see `audience_cycle`
+---@return string
+function M.prev_audience(audience, cycle)
+  return step(audience, cycle or M.AUDIENCE_CYCLE, -1)
 end
 
 --- The audience a comment really has: its own, unless the thread's root is

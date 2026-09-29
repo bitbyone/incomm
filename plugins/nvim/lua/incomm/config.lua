@@ -116,6 +116,19 @@ local defaults = {
     backdrop = 60,
   },
 
+  --- The dialog that picks one comment of a thread: for `:Incomm list`,
+  --- `edit` and `delete-comment`, and the explorer's `a` and `e`.
+  comments = {
+    --- Width in columns, borders excluded. Clamped to the editor.
+    width = 96,
+  },
+
+  --- The audience dialog.
+  audience = {
+    --- The glyphs either side of an audience: h steps back, l steps on.
+    arrows = { "◀", "▶" },
+  },
+
   --- Timestamp rendering: "relative" (2h ago), "datetime", "date", "time", or
   --- a strftime string.
   date_format = "relative",

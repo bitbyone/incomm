@@ -28,7 +28,13 @@ local function install_keymaps(spec)
   local actions = require("incomm.actions")
   ---@type table<string, {rhs: function, desc: string, mode?: string|string[]}>
   local defaults = {
-    c = { rhs = ":Incomm thread<cr>", desc = "Start thread", mode = { "n", "x" } },
+    -- Two keys each, so `c` never waits to see whether a second one follows:
+    -- c + c(omment), p(rivate), e(xternal), b(oth).
+    cc = { rhs = ":Incomm thread<cr>", desc = "Start thread", mode = { "n", "x" } },
+    cp = { rhs = ":Incomm thread private<cr>", desc = "Start private thread", mode = { "n", "x" } },
+    ce = { rhs = ":Incomm thread external<cr>", desc = "Start external thread", mode = { "n", "x" } },
+    cb = { rhs = ":Incomm thread agent+external<cr>", desc = "Start agent + external thread", mode = { "n", "x" } },
+    v = { rhs = actions.list, desc = "Thread details" },
     r = { rhs = actions.reply, desc = "Reply to thread" },
     e = { rhs = actions.edit, desc = "Edit comment" },
     x = { rhs = actions.resolve, desc = "Resolve / reopen thread" },

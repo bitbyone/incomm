@@ -1,7 +1,7 @@
 -- Audience: who may see a comment, and the surfaces that show and change it.
 --
 -- The pure rules live in `model.lua`, the badge in `ui/bubble.lua`, the write in
--- the service, and the flow in `ui/audience.lua` behind `:Incomm audience` and
+-- the service, and the flow in `ui/thread.lua` behind `:Incomm list` and
 -- the explorer's `a`. The one thing worth checking against the real CLI is that
 -- a change made here leaves the same bytes `incomm set` would.
 
@@ -107,6 +107,11 @@ T.test("the cycle is agent, agent + external, external, private", function()
   T.eq(seen, { "agent", "agent+external", "external", "private", "agent" })
   T.eq(model.next_audience(nil), "agent+external", "an absent audience steps from agent")
   T.eq(model.next_audience("team"), "agent", "an unknown one counts as private, so it steps to agent")
+  for _, x in ipairs(model.AUDIENCE_CYCLE) do
+    T.eq(model.prev_audience(model.next_audience(x)), x, "back undoes on, from " .. x)
+  end
+  T.eq(model.prev_audience(nil), "private", "back from the default wraps round")
+  T.eq(model.prev_audience("team"), "external", "an unknown one counts as private")
 end)
 
 T.test("a comment under a private root is private whatever it stores", function()
@@ -381,6 +386,61 @@ T.test("set_thread_audience moves every comment in one write", function()
   end)
 end)
 
+T.test("a published comment only flips between agent + external and external", function()
+  T.with_tmpdir(function(dir)
+    local bufnr, svc = open_fixture(dir)
+    local note = svc:add_note("src/main.go", 4, 4, "mine")
+    svc:add_reply(note.id, "from the MR", "user", "Reviewer")
+    local live = svc:find(note.id)
+    local reply = live.replies[1]
+    reply.source = { id = 501, url = "https://forge/mr/7#note_501" }
+    reply.audience = "agent+external"
+
+    -- The rules.
+    T.eq(model.audience_cycle(live, reply), { "agent+external", "external" })
+    T.eq(model.audience_cycle(live, live), { "agent", "agent+external", "external" }, "the root: anything but private")
+    T.eq(model.next_audience("external", model.audience_cycle(live, reply)), "agent+external", "and round again")
+    T.eq(model.next_audience("agent", model.audience_cycle(live, reply)), "agent+external", "an older file's agent moves on to the cycle")
+
+    -- The service refuses the rest.
+    T.ok(not svc:set_audience(note.id, reply.id, "agent"))
+    T.ok(not svc:set_audience(note.id, reply.id, "private"))
+    T.ok(not svc:set_audience(note.id, nil, "private"), "private would hide the published reply")
+    T.ok(svc:set_audience(note.id, reply.id, "external"))
+    T.eq(svc:find(note.id).replies[1].audience, "external")
+
+    -- The whole thread: the published reply keeps its own.
+    local _, kept = svc:set_thread_audience(note.id, "agent")
+    T.eq(kept, 1)
+    T.eq({ svc:find(note.id).audience, svc:find(note.id).replies[1].audience }, { "agent", "external" })
+    _, kept = svc:set_thread_audience(note.id, "private")
+    T.eq(kept, 2, "the root cannot go private either")
+    T.eq(svc:find(note.id).audience, "agent")
+
+    -- The dialog: l and h stay within the two.
+    track.refresh(bufnr)
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    with_ui(no_picker, function()
+      vim.cmd("Incomm list")
+      feed("j")
+      local seen = {}
+      for _ = 1, 3 do
+        feed("l")
+        seen[#seen + 1] = svc:find(note.id).replies[1].audience
+      end
+      T.eq(seen, { "agent+external", "external", "agent+external" })
+      feed("hh")
+      T.eq(svc:find(note.id).replies[1].audience, "agent+external")
+      feed("k")
+      for _ = 1, 3 do
+        feed("l")
+      end
+      T.eq(svc:find(note.id).audience, "agent", "the root steps agent -> both -> external -> agent, never private")
+      feed("<Esc>")
+    end)
+  end)
+end)
+
 T.test("a file in a newer format refuses an audience change and is left untouched", function()
   T.with_tmpdir(function(dir)
     local _, svc = open_fixture(dir)
@@ -394,7 +454,7 @@ T.test("a file in a newer format refuses an audience change and is left untouche
       T.ok(svc.blocked, "the service is blocked")
       T.ok(not svc:set_audience(note.id, nil, "external"))
       T.ok(not svc:set_thread_audience(note.id, "external"))
-      require("incomm.ui.audience").change(svc, note)
+      T.eq(require("incomm.ui.thread").open(svc, note), nil, "no dialog opens")
       T.eq(#calls, 0)
       T.ok(#notes >= 1 and notes[#notes]:find("update the incomm plugin", 1, true), "it says why: " .. vim.inspect(notes))
     end)
@@ -467,116 +527,128 @@ else
   end)
 end
 
--- ---- :Incomm audience ------------------------------------------------------------------
+-- ---- :Incomm list ------------------------------------------------------------------
 
-T.test(":Incomm audience steps a one-comment thread round the cycle without a picker", function()
-  T.with_tmpdir(function(dir)
-    local bufnr, svc = open_fixture(dir)
-    local note = svc:add_note("src/main.go", 4, 4, "root")
-    track.refresh(bufnr)
-    vim.api.nvim_win_set_cursor(0, { 4, 0 })
-    with_ui(no_picker, function(_, notes)
-      local seen = {}
-      for _ = 1, 4 do
-        vim.cmd("Incomm audience")
-        seen[#seen + 1] = svc:find(note.id).audience
-      end
-      T.eq(seen, { "agent+external", "external", "private", "agent" })
-      T.ok(notes[1]:find("agent + external", 1, true), "it says what it did: " .. notes[1])
-    end)
-    T.eq(svc:find(note.id).audience, "agent")
-  end)
-end)
+--- The text of the dialog on screen.
+---@return string[]
+local function dialog_lines()
+  local d = require("incomm.ui.thread").current()
+  return d and vim.api.nvim_buf_get_lines(d.buf, 0, -1, false) or {}
+end
 
-T.test(":Incomm audience <name> goes straight there, and refuses a name that is not one", function()
-  T.with_tmpdir(function(dir)
-    local bufnr, svc = open_fixture(dir)
-    local note = svc:add_note("src/main.go", 4, 4, "root")
-    track.refresh(bufnr)
-    vim.api.nvim_win_set_cursor(0, { 4, 0 })
-    with_ui(no_picker, function(_, notes)
-      vim.cmd("Incomm audience private")
-      T.eq(svc:find(note.id).audience, "private")
-      vim.cmd("Incomm audience nonsense")
-      T.eq(svc:find(note.id).audience, "private", "unchanged")
-      T.ok(notes[#notes]:find("must be one of", 1, true), notes[#notes])
-      vim.cmd("Incomm audience agent+external")
-      T.eq(svc:find(note.id).audience, "agent+external")
-    end)
-  end)
-end)
-
-T.test("the subcommand completes its argument", function()
-  T.eq(vim.fn.getcompletion("Incomm audience ", "cmdline"), { "agent", "agent+external", "external", "private" })
-  T.eq(vim.fn.getcompletion("Incomm audience ex", "cmdline"), { "external" })
-  T.ok(vim.tbl_contains(vim.fn.getcompletion("Incomm audi", "cmdline"), "audience"))
-  T.eq(vim.fn.getcompletion("Incomm reply ", "cmdline"), {}, "other subcommands take no argument")
-end)
-
-T.test("with replies the picker lists the comments, and only the chosen one moves", function()
+T.test(":Incomm list opens a dialog with a row per comment, audience on the right", function()
   T.with_tmpdir(function(dir)
     local bufnr, svc = open_fixture(dir)
     local note = svc:add_note("src/main.go", 4, 4, "root comment")
     svc:add_reply(note.id, "the agent's answer", "agent", "Opus 5")
-    local reply_id = svc:find(note.id).replies[1].id
     track.refresh(bufnr)
     vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    local editor = vim.api.nvim_get_current_win()
 
-    with_ui(function(items)
-      return items[2]
-    end, function(calls)
-      vim.cmd("Incomm audience")
-      T.eq(#calls, 1)
-      local items = calls[1].items
-      T.eq(#items, 3, "the root, the reply, and the whole thread")
-      T.ok(items[1].label:find("root comment", 1, true) and items[1].label:find("[agent]", 1, true), items[1].label)
-      T.ok(items[2].label:find("Agent (Opus 5)", 1, true) and items[2].label:find("the agent's answer", 1, true), items[2].label)
-      T.ok(items[2].label:find("^  "), "replies are indented under the root")
-      T.eq(items[3].whole, true)
-      T.eq(items[3].label, "whole thread")
+    with_ui(no_picker, function()
+      vim.cmd("Incomm list")
+      local d = require("incomm.ui.thread").current()
+      T.ok(d, "the dialog is open")
+      T.eq(vim.api.nvim_get_current_win(), d.win, "and focused")
+      local lines = dialog_lines()
+      T.eq(#lines, 4, "two lines for the root, two for its reply")
+      T.ok(lines[1]:find("Fixture User", 1, true), "who, first: " .. lines[1])
+      T.ok(lines[2]:find("root comment", 1, true), "then what: " .. lines[2])
+      T.ok(lines[3]:find("^   Agent %(Opus 5%)"), "a reply is indented under the root: " .. lines[3])
+      T.ok(lines[4]:find("the agent's answer", 1, true), lines[4])
+      for _, i in ipairs({ 1, 3 }) do
+        T.ok(lines[i]:find("◀%s+agent%s+▶ $"), "the audience between the arrows, at the right: " .. lines[i])
+      end
+      for _, line in ipairs(lines) do
+        T.eq(vim.fn.strdisplaywidth(line), d.width, "every line fills the dialog")
+      end
+      feed("<Esc>")
+      T.eq(require("incomm.ui.thread").current(), nil, "Esc closes it")
+      T.eq(vim.api.nvim_get_current_win(), editor, "and focus goes back to the code")
     end)
-    T.eq(svc:find(note.id).replies[1].audience, "agent+external", "the reply moved one step")
-    T.eq(svc:find(note.id).audience, "agent", "the root did not")
-    T.eq(svc:find(note.id).replies[1].id, reply_id)
-
-    -- The root can be chosen too, and cancelling changes nothing.
-    with_ui(function(items)
-      return items[1]
-    end, function()
-      vim.cmd("Incomm audience")
-    end)
-    T.eq(svc:find(note.id).audience, "agent+external")
-    with_ui(function()
-      return nil
-    end, function()
-      vim.cmd("Incomm audience")
-    end)
-    T.eq(svc:find(note.id).audience, "agent+external")
-    T.eq(svc:find(note.id).replies[1].audience, "agent+external")
   end)
 end)
 
-T.test("the whole-thread entry steps from the root's audience and applies it to every comment", function()
+T.test("j/k pick a comment, h/l cycle its audience, and every step is saved at once", function()
+  T.with_tmpdir(function(dir)
+    local bufnr, svc = open_fixture(dir)
+    local note = svc:add_note("src/main.go", 4, 4, "root")
+    svc:add_reply(note.id, "first reply")
+    svc:add_reply(note.id, "second reply")
+    track.refresh(bufnr)
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    local function audiences()
+      local n = svc:find(note.id)
+      return { n.audience, n.replies[1].audience, n.replies[2].audience }
+    end
+
+    with_ui(no_picker, function()
+      vim.cmd("Incomm list")
+      feed("l")
+      T.eq(audiences(), { "agent+external", "agent", "agent" }, "l steps the root on")
+      feed("jl")
+      T.eq(audiences(), { "agent+external", "agent+external", "agent" }, "j moves to the first reply")
+      feed("<Down><Right><Right>")
+      T.eq(audiences(), { "agent+external", "agent+external", "external" }, "the arrow keys do the same")
+      feed("h")
+      T.eq(audiences(), { "agent+external", "agent+external", "agent+external" }, "h steps back")
+      feed("jjj")
+      T.eq(require("incomm.ui.thread").current().index, 3, "j stops at the last comment")
+      feed("kkkkh")
+      T.eq(audiences(), { "agent", "agent+external", "agent+external" }, "k back to the root")
+      feed("hh")
+      T.eq(audiences(), { "external", "agent+external", "agent+external" }, "h wraps round through private")
+      T.ok(dialog_lines()[1]:find("◀%s+external%s+▶"), "the row shows what was saved: " .. dialog_lines()[1])
+      feed("q")
+    end)
+    -- Saved, not just drawn: a reload from disk says the same.
+    svc:reload({ publish = false })
+    T.eq(audiences(), { "external", "agent+external", "agent+external" })
+  end)
+end)
+
+T.test("a reply of a private thread shows what it stores, and the dialog follows the model", function()
   T.with_tmpdir(function(dir)
     local bufnr, svc = open_fixture(dir)
     local note = svc:add_note("src/main.go", 4, 4, "root")
     svc:add_reply(note.id, "reply")
-    svc:set_audience(note.id, svc:find(note.id).replies[1].id, "private")
+    svc:set_audience(note.id, nil, "private")
     track.refresh(bufnr)
     vim.api.nvim_win_set_cursor(0, { 4, 0 })
-    with_ui(function(items)
-      return items[#items]
-    end, function()
-      vim.cmd("Incomm audience")
+    with_ui(no_picker, function()
+      vim.cmd("Incomm list")
+      local rows = require("incomm.ui.thread").current().rows
+      T.eq(rows[1].audience, "private")
+      T.eq(rows[2].audience, "agent", "the stored value, not the effective one")
+      T.eq(rows[2].inherited, true)
+
+      -- The agent answers while the dialog is open: a new row appears.
+      svc:add_reply(note.id, "late answer", "agent")
+      vim.wait(1000, function()
+        return #dialog_lines() == 6
+      end, 10)
+      T.eq(#dialog_lines(), 6, "a new entry for the new reply")
+      -- The thread goes away: so does the dialog.
+      svc:remove_note(note.id)
+      vim.wait(1000, function()
+        return require("incomm.ui.thread").current() == nil
+      end, 10)
+      T.eq(require("incomm.ui.thread").current(), nil)
     end)
-    local after = svc:find(note.id)
-    T.eq({ after.audience, after.replies[1].audience }, { "agent+external", "agent+external" })
   end)
+end)
+
+T.test("the thread subcommand completes an audience, and nothing else takes one", function()
+  T.eq(vim.fn.getcompletion("Incomm thread ", "cmdline"), { "agent", "agent+external", "external", "private" })
+  T.eq(vim.fn.getcompletion("Incomm thread ex", "cmdline"), { "external" })
+  T.ok(vim.tbl_contains(vim.fn.getcompletion("Incomm li", "cmdline"), "list"))
+  T.ok(not vim.tbl_contains(vim.fn.getcompletion("Incomm ", "cmdline"), "audience"), "the old command is gone")
+  T.eq(vim.fn.getcompletion("Incomm reply ", "cmdline"), {}, "other subcommands take no argument")
 end)
 
 -- ---- the explorer ---------------------------------------------------------------------
 
-T.test("the explorer's a changes the selected thread and its detail pane shows the badge", function()
+T.test("the explorer's a opens the dialog for the selected thread and its detail pane shows the badge", function()
   T.with_tmpdir(function(dir)
     local _, svc = open_fixture(dir)
     local note = svc:add_note("src/main.go", 4, 4, "root")
@@ -595,26 +667,17 @@ T.test("the explorer's a changes the selected thread and its detail pane shows t
 
     with_ui(no_picker, function()
       feed("a")
+      local d = require("incomm.ui.thread").current()
+      T.ok(d, "a opens the audience dialog")
+      feed("l")
       T.eq(svc:find(note.id).audience, "agent+external")
+      feed("<Esc>")
+      T.eq(vim.api.nvim_get_current_win(), self.wins.list, "back in the explorer's list")
       vim.wait(2000, function()
         return detail():find("agent + external · not published", 1, true) ~= nil
       end, 10)
       T.ok(detail():find("agent + external · not published", 1, true), "the pane follows: " .. detail())
-
-      svc:add_reply(note.id, "one more")
-      vim.wait(2000, function()
-        return detail():find("one more", 1, true) ~= nil
-      end, 10)
-      -- With a reply, the same key opens the picker.
-      with_ui(function(items)
-        return items[2]
-      end, function(calls)
-        feed("a")
-        T.eq(#calls, 1)
-      end)
     end)
-    -- The reply began as its root's agent+external, and one step of the cycle is external.
-    T.eq(svc:find(note.id).replies[1].audience, "external")
     if explorer.current() then
       explorer.close(explorer.current())
     end
@@ -661,7 +724,7 @@ T.test("the explorer's help lists a", function()
     local found
     for _, buf in ipairs(vim.api.nvim_list_bufs()) do
       for _, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
-        if line:find("change who sees a comment", 1, true) then
+        if line:find("thread details: audience, edit, delete", 1, true) then
           found = true
         end
       end

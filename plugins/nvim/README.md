@@ -67,13 +67,13 @@ the identically-named IntelliJ action.
 
 | Subcommand | What it does |
 |---|---|
-| `thread` | Start a thread on the cursor line, or on the range: `:'<,'>Incomm thread` |
+| `thread [audience]` | Start a thread on the cursor line, or on the range: `:'<,'>Incomm thread`. An audience (`private`, `agent`, `external`, `agent+external`) says who may see it; without one it is `agent` |
 | `reply` | Reply to the thread under the cursor |
 | `edit` | Edit one of your comments in the thread under the cursor |
 | `resolve` | Resolve / reopen the thread under the cursor (resolving collapses its card) |
 | `delete` | Delete the thread under the cursor, replies and all |
 | `delete-comment` | Delete one message (a reply, or the whole thread if it is the original) |
-| `audience [name]` | Change who may see a comment: one step along the cycle, or straight to `private`, `agent`, `external` or `agent+external` (see below) |
+| `list` | Thread details for the thread under the cursor: every comment, with `h`/`l` to change who sees it, `e` to edit and `d` to delete it (see below) |
 | `toggle` | Show/hide this thread's card; the sign stays |
 | `toggle-all` | Show/hide every card |
 | `toggle-resolved` | Show/hide resolved cards only |
@@ -128,7 +128,8 @@ yours. Pass `keymaps` to install a set:
 require("incomm").setup({ keymaps = { prefix = "<leader>i" } })
 ```
 
-That gives `<prefix>` + `c` thread · `r` reply · `e` edit · `x` resolve ·
+That gives `<prefix>` + `cc` thread (`cp` private, `ce` external, `cb` agent +
+external) · `v` thread details · `r` reply · `e` edit · `x` resolve ·
 `t` toggle · `d` delete · `a` all · `R` resolved · `i` explorer · `f` explorer
 in file · `l` reload · `s` status · `n`/`p` next/previous, plus `]i` / `[i`.
 Pass `keys` alongside `prefix` to choose your own suffixes, or map the API
@@ -137,6 +138,7 @@ directly:
 ```lua
 vim.keymap.set("n", "<leader>ic", "<cmd>Incomm thread<cr>")
 vim.keymap.set("x", "<leader>ic", ":Incomm thread<cr>")
+vim.keymap.set({ "n", "x" }, "<leader>icp", ":Incomm thread private<cr>") -- a note to self
 vim.keymap.set("n", "<leader>ir", function() require("incomm").actions.reply() end)
 ```
 
@@ -176,6 +178,12 @@ require("incomm").setup({
     list_width = 0.34,     -- how much of it the thread list gets
     icon = "▌",
     backdrop = 60,         -- % of IncommBackdrop over the editor; false for none
+  },
+  comments = {             -- the dialog that picks one comment of a thread
+    width = 96,
+  },
+  audience = {
+    arrows = { "◀", "▶" }, -- either side of an audience: h steps back, l on
   },
   date_format = "relative", -- or "datetime" | "date" | "time" | a strftime string
   watch = true,             -- reload when the agent or a branch switch changes the file
@@ -266,13 +274,46 @@ the original is `private` every reply is drawn as `private` whatever it stores:
 | `external` | Meant for the merge request, and not shown to the agent. |
 | `private` | You only. The CLI never returns it, in any view. |
 
-`:Incomm audience` moves a comment one step along
-`agent → agent+external → external → private → agent`. With more than one comment
-in the thread it asks which — the original, one of the replies, or the whole
-thread, which steps from the original's audience and moves every comment there —
-and it does not ask when there is only one. `:Incomm audience private` goes
-straight to a named audience. In the explorer the same flow is on `a`, so you can
-mark comments while you browse them. There is no default keymap.
+`:Incomm list` opens **thread details**: the comment dialog (below) with each
+comment's audience on the right of its entry, between `◀` and `▶`, and three
+things to do to the selected comment:
+
+| Key | |
+|---|---|
+| `j` / `k`, `↓` / `↑` | next / previous comment |
+| `l` / `h`, `→` / `←` | step its audience on / back along `agent → agent+external → external → private` |
+| `e` | edit it in the composer (your own comments); thread details come back afterwards |
+| `d`, `<Del>` | delete it — the thread's own comment takes the whole thread |
+| `<Esc>`, `q`, `<CR>` | close |
+
+A comment that is on the merge request already — it has a `source`, because it
+was imported from the forge or published to it — stays there: `h`/`l` only flip
+it between `agent+external` and `external`, and the original of a thread with
+such a reply skips `private`, which would hide the reply. Neither is edited or
+deleted here (it is marked `· on the MR`), and a thread's own comment cannot be
+deleted while such a reply hangs off it — that would delete the reply too.
+
+Every step is saved as you make it; there is nothing to confirm. A reply of a
+`private` thread shows what it stores, dimmed: it stays private until the
+original is shared again. In the explorer thread details are on `a`, so you can
+work through comments while you browse them. There is no default keymap; the
+arrows are `audience.arrows`.
+
+A new thread can start with any audience: `:Incomm thread private` (or
+`:'<,'>Incomm thread external`, …) opens the composer for a thread only that
+audience sees, and says so in its title.
+
+### The comment dialog
+
+Whatever acts on one comment of a thread — `:Incomm list`, `edit` and
+`delete-comment`, and the explorer's `a` and `e` — picks it in the same float:
+the original first and its replies indented under it, each as two lines (who
+and when, then as much of the text as fits). It opens in navigation mode, not in
+a filter prompt: `j`/`k` or `↓`/`↑` move, `<CR>` takes the selected comment
+(for `edit` and `delete-comment`), `<Esc>`/`q` close. `edit` lists only your own
+comments and skips the dialog when there is just one; neither offers what is on
+the merge request. Its width is
+`comments.width`.
 
 A bubble says so in its header line, next to the time, always: a dim `agent` for
 the default, and `agent + external · not published`, `external · published` or

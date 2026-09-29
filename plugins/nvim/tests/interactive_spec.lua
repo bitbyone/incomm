@@ -232,22 +232,87 @@ T.test("reply and edit go through the composer too", function()
     T.eq(note.replies[1].content, "a reply")
     T.eq(note.replies[1].author, "user")
 
-    -- Editing the original: the composer opens prefilled, and only user
-    -- comments are offered (the reply here is the user's too, so picking is
-    -- needed -- drive it through vim.ui.select's default).
-    local original_select = vim.ui.select
-    vim.ui.select = function(items, _, on_choice)
-      on_choice(items[1]) -- the original comment
-    end
+    -- Both comments are the user's, so the comment dialog asks which one --
+    -- in navigation mode: <CR> takes the selected one, the original.
     actions.edit()
+    local dialog = require("incomm.ui.comments").current()
+    T.ok(dialog, "the dialog asks which comment")
+    T.eq(#dialog.rows, 2)
+    T.eq(vim.fn.mode(), "n", "it opens in navigation mode, not a prompt")
+    feed("<CR>")
+    T.eq(require("incomm.ui.comments").current(), nil, "and closes on the choice")
     local win, buf = composer_win()
     T.ok(win, "composer opened for the edit")
     T.eq(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "original" }, "prefilled with the current text")
     compose("original, revised")
-    vim.ui.select = original_select
 
     T.eq(svc:all_notes()[1].content, "original, revised")
     T.eq(#svc:all_notes()[1].replies, 1, "the reply is untouched")
+  end)
+end)
+
+T.test("the edit dialog lists only your comments, j picks a reply, Esc changes nothing", function()
+  T.with_tmpdir(function(dir)
+    local bufnr, svc = open_fixture(dir)
+    local note = svc:add_note("src/main.go", 4, 4, "mine")
+    svc:add_reply(note.id, "the agent's", "agent", "Opus 5")
+    svc:add_reply(note.id, "mine again")
+    track.refresh(bufnr)
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    local comments = require("incomm.ui.comments")
+
+    actions.edit()
+    T.eq(vim.tbl_map(function(r) return r.content end, comments.current().rows), { "mine", "mine again" })
+    feed("<Esc>")
+    T.eq(comments.current(), nil)
+    T.eq(composer_win(), nil, "cancelled: no composer")
+
+    actions.edit()
+    feed("j<CR>")
+    local _, buf = composer_win()
+    T.eq(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "mine again" }, "the reply, not the original")
+    compose("revised")
+    local stored = svc:find(note.id)
+    T.eq({ stored.content, stored.replies[1].content, stored.replies[2].content }, { "mine", "the agent's", "revised" })
+  end)
+end)
+
+T.test("the explorer's e asks which of your comments, like :Incomm edit", function()
+  T.with_tmpdir(function(dir)
+    local _, svc = open_fixture(dir)
+    local note = svc:add_note("src/main.go", 4, 4, "first")
+    svc:add_reply(note.id, "second")
+    local explorer = require("incomm.ui.explorer")
+    explorer.filters = { open = true, resolved = false, orphaned = true }
+    explorer.open(svc)
+    feed("e")
+    local comments = require("incomm.ui.comments")
+    T.ok(comments.current(), "the dialog, not straight into the first comment")
+    feed("j<CR>")
+    local _, buf = composer_win()
+    T.eq(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "second" })
+    compose("second, revised")
+    T.eq(svc:find(note.id).replies[1].content, "second, revised")
+    if explorer.current() then
+      explorer.close(explorer.current())
+    end
+  end)
+end)
+
+T.test("delete-comment picks the message in the same dialog", function()
+  T.with_tmpdir(function(dir)
+    local bufnr, svc = open_fixture(dir)
+    local note = svc:add_note("src/main.go", 4, 4, "root")
+    svc:add_reply(note.id, "keep")
+    svc:add_reply(note.id, "drop")
+    track.refresh(bufnr)
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    actions.delete_comment()
+    feed("jj<CR>")
+    T.eq(vim.tbl_map(function(r) return r.content end, svc:find(note.id).replies), { "keep" })
+    actions.delete_comment()
+    feed("<CR>")
+    T.eq(svc:find(note.id), nil, "the original takes the thread with it")
   end)
 end)
 
@@ -481,5 +546,144 @@ if vim.fn.executable("incomm") == 1 then
     end)
   end)
 end
+
+-- ---- thread details ---------------------------------------------------------
+
+--- Give a comment a `source`, as an import from the forge or a publish would.
+local function publish(comment, id)
+  comment.source = { id = id, url = "https://forge/mr/7#note_" .. id }
+  comment.audience = "agent+external"
+end
+
+T.test(":Incomm list opens thread details: h/l audience, e edit, d delete", function()
+  T.with_tmpdir(function(dir)
+    local bufnr, svc = open_fixture(dir)
+    local note = svc:add_note("src/main.go", 4, 4, "root")
+    svc:add_reply(note.id, "first")
+    svc:add_reply(note.id, "second")
+    track.refresh(bufnr)
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    local thread = require("incomm.ui.thread")
+
+    vim.cmd("Incomm list")
+    local d = thread.current()
+    T.ok(d, "thread details are open")
+    T.ok(vim.api.nvim_win_get_config(d.win).title[1][1]:find("thread details", 1, true), "and say so")
+    T.eq(vim.fn.mode(), "n")
+
+    feed("jl")
+    T.eq(svc:find(note.id).replies[1].audience, "agent+external", "l steps the audience")
+
+    -- e: the composer, then the dialog again on the same comment.
+    feed("e")
+    local _, buf = composer_win()
+    T.eq(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "first" })
+    compose("first, revised")
+    vim.wait(1000, function() return thread.current() ~= nil end, 10)
+    T.eq(svc:find(note.id).replies[1].content, "first, revised")
+    T.ok(thread.current(), "back in thread details")
+    T.eq(thread.current().index, 2, "on the comment just edited")
+
+    -- d: a reply goes, the dialog stays.
+    feed("jd")
+    T.eq(vim.tbl_map(function(r) return r.content end, svc:find(note.id).replies), { "first, revised" })
+    T.ok(thread.current(), "still open")
+    -- ...and the thread's own comment takes the thread and the dialog with it.
+    feed("ggd")
+    T.eq(svc:find(note.id), nil)
+    T.eq(thread.current(), nil)
+  end)
+end)
+
+T.test("what is on the merge request is neither edited nor deleted", function()
+  T.with_tmpdir(function(dir)
+    local bufnr, svc = open_fixture(dir)
+    local note = svc:add_note("src/main.go", 4, 4, "mine")
+    svc:add_reply(note.id, "from the MR", "user", "Reviewer")
+    svc:add_reply(note.id, "mine too")
+    local live = svc:find(note.id)
+    publish(live.replies[1], 501)
+    track.refresh(bufnr)
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    local warnings = {}
+    local notify = vim.notify
+    vim.notify = function(msg, level)
+      if level == vim.log.levels.WARN then
+        warnings[#warnings + 1] = msg
+      end
+    end
+    local ok, err = pcall(function()
+      -- The service refuses, whatever calls it.
+      local reply_id = live.replies[1].id
+      T.ok(not svc:update_reply(note.id, reply_id, "changed"))
+      T.ok(not svc:remove_reply(note.id, reply_id))
+      T.ok(not svc:remove_note(note.id), "the root would take the published reply with it")
+      T.eq(svc:find(note.id).replies[1].content, "from the MR")
+
+      -- The dialog says why instead.
+      vim.cmd("Incomm list")
+      local thread = require("incomm.ui.thread")
+      T.ok(table.concat(vim.api.nvim_buf_get_lines(thread.current().buf, 0, -1, false), "\n"):find("on the MR", 1, true),
+        "the published comment is marked")
+      feed("je")
+      T.eq(composer_win(), nil, "no composer")
+      feed("d")
+      T.eq(#svc:find(note.id).replies, 2, "nothing deleted")
+      feed("kd")
+      T.ok(svc:find(note.id), "the thread stays")
+      T.eq(#warnings, 3, vim.inspect(warnings))
+      T.ok(warnings[1]:find("merge request", 1, true), warnings[1])
+      feed("jjd")
+      T.eq(#svc:find(note.id).replies, 1, "an unpublished reply still goes")
+      feed("<Esc>")
+
+      -- The commands: edit skips it, delete refuses the thread.
+      actions.edit()
+      local _, buf = composer_win()
+      T.eq(vim.api.nvim_buf_get_lines(buf, 0, -1, false), { "mine" }, "only the root is left to edit")
+      compose("mine, revised")
+      actions.delete_thread()
+      T.ok(svc:find(note.id), "delete refuses a thread with a published reply")
+    end)
+    vim.notify = notify
+    if not ok then
+      error(err, 0)
+    end
+  end)
+end)
+
+T.test(":Incomm thread <audience> starts a thread only its audience sees", function()
+  T.with_tmpdir(function(dir)
+    local _, svc = open_fixture(dir)
+    vim.api.nvim_win_set_cursor(0, { 4, 0 })
+    vim.cmd("Incomm thread private")
+    local win = composer_win()
+    T.ok(vim.api.nvim_win_get_config(win).title[1][1]:find("private", 1, true), "the composer says who will see it")
+    compose("a note to self")
+    T.eq(svc:all_notes()[1].audience, "private")
+
+    vim.cmd("3,4Incomm thread agent+external")
+    compose("for the MR")
+    local note = svc:all_notes()[2]
+    T.eq({ note.audience, note.startLine, note.endLine }, { "agent+external", 3, 4 }, "a range and an audience together")
+
+    vim.cmd("Incomm thread")
+    compose("plain")
+    T.eq(svc:all_notes()[3].audience, "agent", "none given: the default")
+
+    local notify = vim.notify
+    local said
+    vim.notify = function(msg) said = msg end
+    vim.cmd("Incomm thread nonsense")
+    vim.notify = notify
+    T.eq(composer_win(), nil, "a name that is not an audience opens nothing")
+    T.ok(said and said:find("must be one of", 1, true), tostring(said))
+
+    -- A mapping can pass it straight to the action, too.
+    actions.start_thread(nil, nil, "external")
+    compose("hidden from the agent")
+    T.eq(svc:all_notes()[4].audience, "external")
+  end)
+end)
 
 service.reset()

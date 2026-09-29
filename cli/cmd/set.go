@@ -104,6 +104,9 @@ Examples:
 			}
 			*target.source = &src
 		}
+		if err := model.CheckPublished(*target.audience, *target.source); err != nil {
+			return err
+		}
 		note.UpdatedAt = model.NowUTC()
 		if err := st.Save(nf); err != nil {
 			return err

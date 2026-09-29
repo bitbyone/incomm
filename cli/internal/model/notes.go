@@ -85,6 +85,16 @@ func CLIAudience(a string) error {
 	return fmt.Errorf("--audience must be %q, %q or %q", AudienceAgent, AudienceExternal, AudienceBoth)
 }
 
+// CheckPublished refuses an audience a published comment may not have. A comment
+// with a Source is on the forge already, so it stays there: it may be hidden from
+// the agent (external) but never made agent-only or private.
+func CheckPublished(audience string, src *Source) error {
+	if src != nil && !IncludesExternal(audience) {
+		return fmt.Errorf("a published comment stays on the forge: its audience must be %q or %q", AudienceBoth, AudienceExternal)
+	}
+	return nil
+}
+
 // Source records where a comment came from or where it was published to. It is
 // metadata for integrations: an external comment with no Source is still
 // waiting to be published.

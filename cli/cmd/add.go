@@ -78,6 +78,14 @@ Examples:
 		if err != nil {
 			return err
 		}
+		source := sourceOf(addSourceURL, addSourceID, addSourceThr)
+		// A comment brought in from the forge belongs on it: agent+external unless told.
+		if source != nil && !cmd.Flags().Changed("audience") {
+			audience = model.AudienceBoth
+		}
+		if err := model.CheckPublished(audience, source); err != nil {
+			return err
+		}
 		now := model.NowUTC()
 		note := model.Note{
 			ID:          model.NewID(),
@@ -91,7 +99,7 @@ Examples:
 			Author:      author,
 			AuthorTitle: authorTitle,
 			Audience:    audience,
-			Source:      sourceOf(addSourceURL, addSourceID, addSourceThr),
+			Source:      source,
 			CreatedAt:   now,
 			UpdatedAt:   now,
 			Replies:     []model.Reply{},

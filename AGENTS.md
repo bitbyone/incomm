@@ -61,7 +61,8 @@ The plugins and the CLI are **independent builds** that only agree on the shared
 - **Source:** an optional `source` (`url`, `id`, `thread`) records where a comment came
   from or was published to on a forge. It is metadata for integrations (unagit imports
   and publishes with it); an `external` comment without a `source` is still waiting to be
-  published.
+  published. A comment with a `source` is on the forge and stays there: its audience is
+  `agent+external` or `external` only, and the editors neither edit nor delete it (§11.2).
 - **Format version:** the file's `version` is one integer, and any change to the JSON
   shape bumps it. A component refuses to read or write a file whose version is newer than
   it understands (§11.7) instead of rewriting it and dropping what it does not know.
@@ -621,6 +622,17 @@ The project root is:
 - `source` is optional metadata (`url`, `id`, `thread`, each omitted when empty). `thread` is
   only meaningful on a thread's first comment. `audience` including `external` with no
   `source` means the comment is waiting to be published.
+- **A comment with a `source` stays on the forge**: its audience is only ever `agent+external`
+  or `external` (it can be hidden from the agent, never made agent-only or private), and a
+  thread whose replies include one is never made `private` at the root (that would hide the
+  reply). Writers refuse anything else: the CLI's `add`/`reply`/`set` exit non-zero (a comment
+  added or a reply given with a `source` and no `--audience` defaults to `agent+external`), and
+  the editors step such a comment only through the audiences it may take
+  (`Audience.cycleFor` / `model.audience_cycle`). The editors also refuse to **edit or delete**
+  it, and to delete a thread's root while a reply of it has a `source` (the reply would go too):
+  `Audience.canEdit` / `canDelete` and `model.can_edit` / `can_delete`, checked in the services.
+  Bulk clears (`clear`, *Clear Threads in File*) still remove everything, and the CLI's `rm` does
+  not check this.
 - `branch` is the **raw** (unsanitized) git branch name, e.g. `"feature/cool-thing"`.
   It is authoritative — the filename slug (`notes_feature_cool-thing.json`) is only
   a filesystem distinction. Whoever creates the first thread is responsible for

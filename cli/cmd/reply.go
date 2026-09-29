@@ -56,8 +56,16 @@ var replyCmd = &cobra.Command{
 		}
 		// A reply belongs to its conversation: unless told otherwise it is seen
 		// by the same people as the comment it answers.
+		source := sourceOf(replySourceURL, replySourceID, "")
 		if !cmd.Flags().Changed("audience") {
 			audience = note.Audience
+			// ...except that one brought in from the forge stays on it.
+			if source != nil && !model.IncludesExternal(audience) {
+				audience = model.AudienceBoth
+			}
+		}
+		if err := model.CheckPublished(audience, source); err != nil {
+			return err
 		}
 		now := model.NowUTC()
 		reply := model.Reply{
@@ -65,7 +73,7 @@ var replyCmd = &cobra.Command{
 			Author:      replyAuthor,
 			AuthorTitle: authorTitle,
 			Audience:    audience,
-			Source:      sourceOf(replySourceURL, replySourceID, ""),
+			Source:      source,
 			Content:     replyContent,
 			CreatedAt:   now,
 		}

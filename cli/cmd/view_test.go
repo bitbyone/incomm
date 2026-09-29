@@ -410,3 +410,57 @@ func TestAReplyInheritsTheAudienceOfItsComment(t *testing.T) {
 		t.Errorf("a reply under a default comment is %q, want agent", got)
 	}
 }
+
+func TestAPublishedCommentStaysOnTheForge(t *testing.T) {
+	root, st := viewFixture(t)
+	file := filepath.Join(root, "main.go")
+	// Brought in from the forge without an audience: agent+external, the MR default.
+	if _, err := runCLI(t, "--root", root, "add", "-f", file, "-l", "1", "-c", "imported", "--source-id", "11"); err != nil {
+		t.Fatal(err)
+	}
+	// ...and never agent-only.
+	if _, err := runCLI(t, "--root", root, "add", "-f", file, "-l", "1", "-c", "bad", "--audience", "agent", "--source-id", "12"); err == nil ||
+		!strings.Contains(err.Error(), "published") {
+		t.Errorf("agent-only published add: err = %v", err)
+	}
+	// A published reply under a default comment does not inherit agent.
+	if _, err := runCLI(t, "--root", root, "reply", "aaaa0001", "-c", "from the MR", "--source-id", "13"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runCLI(t, "--root", root, "reply", "aaaa0001", "-c", "bad", "--audience", "agent", "--source-id", "14"); err == nil {
+		t.Error("an agent-only published reply must be refused")
+	}
+	nf, _ := st.Load()
+	var imported *model.Note
+	for i := range nf.Notes {
+		if nf.Notes[i].Content == "imported" {
+			imported = &nf.Notes[i]
+		}
+		if nf.Notes[i].Content == "bad" {
+			t.Error("a refused add must not be written")
+		}
+	}
+	if imported == nil || imported.Audience != model.AudienceBoth {
+		t.Fatalf("imported = %+v", imported)
+	}
+	replies := nf.Find("aaaa0001").Replies
+	if last := replies[len(replies)-1]; last.Content != "from the MR" || last.Audience != model.AudienceBoth {
+		t.Errorf("published reply = %+v", last)
+	}
+
+	// external and back is fine; agent is not, and nothing is written.
+	if _, err := runCLI(t, "--root", root, "set", imported.ID, "--audience", "external"); err != nil {
+		t.Fatal(err)
+	}
+	before := fileBytes(t, st)
+	if _, err := runCLI(t, "--root", root, "--view", "external", "set", imported.ID, "--audience", "agent"); err == nil {
+		t.Error("a published comment must not become agent-only")
+	}
+	// Recording a source on an agent-only comment would publish it behind the agent's back.
+	if _, err := runCLI(t, "--root", root, "set", "aaaa0001", "--source-id", "15"); err == nil {
+		t.Error("an agent-only comment cannot take a source")
+	}
+	if fileBytes(t, st) != before {
+		t.Error("a refused set must leave the file alone")
+	}
+}

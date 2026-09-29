@@ -47,9 +47,9 @@ local links = {
   IncommAudiencePending = "DiagnosticWarn",
   IncommAudiencePublished = "DiagnosticOk",
   IncommAudiencePrivate = "DiagnosticHint",
-  -- The box of your own comment that is meant for the merge request, and of one
-  -- only you see. An agent's box is always the agent's colour: who wrote it wins.
-  IncommExternal = "Statement", -- purple in most schemes; lightened for the box
+  -- The box of your own comment that only you see. An agent's box is always the
+  -- agent's colour: who wrote it wins. (The box of one meant for the merge
+  -- request is `IncommExternal`: a purple found in the scheme, see `purple`.)
   IncommPrivate = "Comment", -- grey
 }
 
@@ -74,6 +74,87 @@ end
 local function split(rgb)
   return math.floor(rgb / 0x10000) % 0x100, math.floor(rgb / 0x100) % 0x100, rgb % 0x100
 end
+
+---@param rgb integer
+---@return number h 0..360, number s 0..1, number l 0..1
+local function to_hsl(rgb)
+  local r, g, b = split(rgb)
+  r, g, b = r / 255, g / 255, b / 255
+  local max, min = math.max(r, g, b), math.min(r, g, b)
+  local l = (max + min) / 2
+  if max == min then
+    return 0, 0, l
+  end
+  local d = max - min
+  local s = l > 0.5 and d / (2 - max - min) or d / (max + min)
+  local h
+  if max == r then
+    h = (g - b) / d + (g < b and 6 or 0)
+  elseif max == g then
+    h = (b - r) / d + 2
+  else
+    h = (r - g) / d + 4
+  end
+  return h * 60, s, l
+end
+
+---@param h number 0..360
+---@param s number
+---@param l number
+---@return integer
+local function from_hsl(h, s, l)
+  local function channel(p, q, t)
+    t = t % 1
+    if t < 1 / 6 then
+      return p + (q - p) * 6 * t
+    elseif t < 1 / 2 then
+      return q
+    elseif t < 2 / 3 then
+      return p + (q - p) * (2 / 3 - t) * 6
+    end
+    return p
+  end
+  local q = l < 0.5 and l * (1 + s) or l + s - l * s
+  local p = 2 * l - q
+  local hh = h / 360
+  local function byte(t)
+    return math.floor(channel(p, q, t) * 255 + 0.5)
+  end
+  return byte(hh + 1 / 3) * 0x10000 + byte(hh) * 0x100 + byte(hh - 1 / 3)
+end
+
+--- Where a scheme keeps its purple, if it has one.
+local PURPLE_SOURCES = {
+  "@keyword", "Keyword", "Statement", "Conditional", "Repeat", "@keyword.function",
+  "Special", "@constructor", "PreProc", "Include", "Define", "Macro", "Type",
+  "Constant", "Number", "@function.builtin", "Function", "Identifier", "Title",
+  "DiagnosticHint", "DiagnosticInfo",
+}
+
+--- The purple for a comment meant for the merge request. `IncommExternal` when
+--- the user or the colourscheme set it; otherwise the scheme's own purple, the
+--- first of its syntax colours with a violet hue; otherwise the human's blue
+--- turned to violet, so it still sits in the scheme's lightness.
+---@param fallback integer the colour to turn when the scheme has no purple
+---@return integer
+local function purple(fallback)
+  local own = color_of("IncommExternal", "fg")
+  if own then
+    return own
+  end
+  for _, name in ipairs(PURPLE_SOURCES) do
+    local fg = color_of(name, "fg")
+    if fg then
+      local h, s = to_hsl(fg)
+      if h >= 255 and h <= 320 and s >= 0.2 then
+        return fg
+      end
+    end
+  end
+  local _, s, l = to_hsl(fallback)
+  return from_hsl(275, math.max(s, 0.45), math.min(math.max(l, 0.55), 0.75))
+end
+M._purple = purple
 
 --- `fg` mixed over `bg`, with `alpha` the weight of `fg` (0..1).
 ---
@@ -102,7 +183,8 @@ local function derive()
     -- still legible, just not tuned to the theme.
     vim.api.nvim_set_hl(0, "IncommCard", { link = "Normal" })
     vim.api.nvim_set_hl(0, "IncommCardLine", { link = "IncommMuted" })
-    vim.api.nvim_set_hl(0, "IncommBorderExternal", { link = "IncommExternal" })
+    -- No true colour to mix: the nearest the scheme's own groups can do.
+    vim.api.nvim_set_hl(0, "IncommBorderExternal", { link = "Statement", default = true })
     vim.api.nvim_set_hl(0, "IncommBorderPrivate", { link = "IncommPrivate" })
     for _, author in ipairs({ "User", "Agent" }) do
       vim.api.nvim_set_hl(0, "IncommBorder" .. author, { link = "Incomm" .. author })
@@ -168,8 +250,13 @@ local function derive()
 
   -- Your own comment for the merge request: a light purple box; one only you
   -- see: a grey one. Both as strong as an author's box, so they read as kinds.
-  local external = color_of("IncommExternal", "fg") or accents.User
-  vim.api.nvim_set_hl(0, "IncommBorderExternal", { fg = blend(blend(external, text, 0.7), surface, 0.7) })
+  -- Light purple: the scheme's hue, lifted to a pastel in HSL (mixing toward the
+  -- text colour greys it instead), and toward the editor only a little.
+  local h, s = to_hsl(purple(accents.User))
+  local dark = vim.o.background ~= "light"
+  -- Kept violet: a scheme's "purple" can lean pink or blue.
+  local light = from_hsl(math.min(math.max(h, 262), 292), math.max(s, 0.45), dark and 0.74 or 0.5)
+  vim.api.nvim_set_hl(0, "IncommBorderExternal", { fg = blend(light, surface, 0.85) })
   vim.api.nvim_set_hl(0, "IncommBorderPrivate", { fg = blend(color_of("IncommPrivate", "fg") or muted, surface, 0.6) })
 
   for author, accent in pairs(accents) do

@@ -215,7 +215,7 @@ resolve to:
 | `IncommContent` | `Normal` | comment text |
 | `IncommMuted` | `Comment` | timestamps, locations |
 | `IncommAudiencePending` / `IncommAudiencePublished` / `IncommAudiencePrivate` | `DiagnosticWarn` / `DiagnosticOk` / `DiagnosticHint` | the hue of an audience badge's state word, and of `private` |
-| `IncommExternal` / `IncommPrivate` | `Statement` / `Comment` | the box of your own comment meant for the merge request (lightened into a light purple), and of one only you see (grey) |
+| `IncommExternal` / `IncommPrivate` | *found* / `Comment` | the box of your own comment meant for the merge request (a light purple), and of one only you see (grey). `IncommExternal` is not linked: unless you set it, incomm takes the first violet among your scheme's syntax colours (keyword, statement, …) or, failing that, turns its blue to violet, then lifts it to a pastel |
 | `IncommSelection` / `IncommPreviewLine` | `Visual` / `CursorLine` | the explorer's selected row, and the anchored lines in its code preview |
 
 From those it derives the bubble borders, the dimmed body text, the calmed

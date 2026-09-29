@@ -195,6 +195,42 @@ T.test("the audience floats to the right edge of the header, name and time stay 
   T.ok(plain:find("agent │$"), "the default badge is at the right edge: " .. plain)
 end)
 
+T.test("the purple for the merge request: yours if set, the scheme's if it has one, else its blue turned", function()
+  local hl = require("incomm.ui.highlights")
+  local saved = {}
+  for _, name in ipairs({ "IncommExternal", "Statement", "@keyword", "Keyword", "Special", "Constant" }) do
+    saved[name] = vim.api.nvim_get_hl(0, { name = name })
+  end
+  local function hue(rgb)
+    local r, g, b = math.floor(rgb / 0x10000) % 256, math.floor(rgb / 0x100) % 256, rgb % 256
+    local max, min = math.max(r, g, b), math.min(r, g, b)
+    if max == min then return 0 end
+    local d = max - min
+    local h = max == r and (g - b) / d % 6 or (max == g and (b - r) / d + 2 or (r - g) / d + 4)
+    return h * 60
+  end
+
+  vim.api.nvim_set_hl(0, "IncommExternal", { fg = 0x123456 })
+  T.eq(hl._purple(0x0000ff), 0x123456, "an explicit IncommExternal wins")
+  vim.api.nvim_set_hl(0, "IncommExternal", {})
+  -- A beige Statement is not taken for purple; a violet Keyword is.
+  vim.api.nvim_set_hl(0, "Statement", { fg = 0xd7af87 })
+  vim.api.nvim_set_hl(0, "@keyword", {})
+  vim.api.nvim_set_hl(0, "Keyword", { fg = 0x9d7cd8 })
+  T.eq(hl._purple(0x0000ff), 0x9d7cd8, "the scheme's own violet")
+  -- No violet anywhere: the blue, turned.
+  for _, name in ipairs({ "Keyword", "Special", "Constant" }) do
+    vim.api.nvim_set_hl(0, name, { fg = 0xd7af87 })
+  end
+  local turned = hl._purple(0x5f87d7)
+  local h = hue(turned)
+  T.ok(h >= 255 and h <= 320, string.format("turned to violet: #%06x, hue %d", turned, h))
+
+  for name, spec in pairs(saved) do
+    vim.api.nvim_set_hl(0, name, spec)
+  end
+end)
+
 T.test("the box is the agent's colour for the agent, and says who sees your own", function()
   local hl = require("incomm.ui.highlights")
   -- The author wins: the agent's box is the agent's whatever the audience.

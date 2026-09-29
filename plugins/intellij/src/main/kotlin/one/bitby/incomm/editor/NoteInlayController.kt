@@ -20,7 +20,9 @@ import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.ui.EditorTextField
 import com.intellij.util.ui.JBUI
 import one.bitby.incomm.anchor.Anchoring
+import one.bitby.incomm.model.AUDIENCE_AGENT
 import one.bitby.incomm.model.AUTHOR_USER
+import one.bitby.incomm.model.Audience
 import one.bitby.incomm.model.Note
 import one.bitby.incomm.settings.IncommSettings
 import one.bitby.incomm.store.NotesService
@@ -442,13 +444,13 @@ class NoteInlayController(
     }
 
     /** Begin editing a note's original comment in place, revealing its card first. */
-    fun startEdit(noteId: String) {
+    fun startEdit(noteId: String, replyId: String? = null) {
         val tracker = IncommEditorTracker.getInstance(project)
         if (tracker.isNoteHidden(noteId)) {
             tracker.setNoteHidden(noteId, false)
             refreshCard(noteId)
         }
-        cards[noteId]?.card?.beginEditOriginal()
+        cards[noteId]?.card?.beginEdit(replyId)
     }
 
     /**
@@ -471,10 +473,12 @@ class NoteInlayController(
      * above the first line — identical to the reply editor. Check saves the
      * comment; cancel / Escape discards it.
      */
-    fun startAdd(startLine: Int, endLine: Int) {
-        startCompose(startLine, "new comment") { text ->
+    fun startAdd(startLine: Int, endLine: Int, audience: String = AUDIENCE_AGENT) {
+        // Say it when it is not the default, so a private note is known to be one.
+        val subtitle = if (audience == AUDIENCE_AGENT) "new comment" else "new comment \u00B7 " + Audience.label(audience)
+        startCompose(startLine, subtitle) { text ->
             val lines = Anchoring.splitLines(editor.document.text)
-            NotesService.getInstance(project).addNote(rel, startLine, endLine, text, AUTHOR_USER, lines)
+            NotesService.getInstance(project).addNote(rel, startLine, endLine, text, AUTHOR_USER, lines, audience = audience)
         }
     }
 

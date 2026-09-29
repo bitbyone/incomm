@@ -7,6 +7,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.util.concurrency.AppExecutorUtil
 import one.bitby.incomm.anchor.Anchoring
+import one.bitby.incomm.model.AUDIENCE_AGENT
 import one.bitby.incomm.model.Audience
 import one.bitby.incomm.model.Note
 import one.bitby.incomm.model.NotesFile
@@ -214,6 +215,7 @@ class NotesService(private val project: Project) : Disposable {
         author: String,
         fileLines: List<String>,
         authorTitle: String? = null,
+        audience: String = AUDIENCE_AGENT,
     ): Note {
         val title = authorTitle ?: defaultAuthorTitle(author)
         val now = nowUtc()
@@ -228,6 +230,7 @@ class NotesService(private val project: Project) : Disposable {
             orphaned = false,
             author = author,
             authorTitle = title,
+            audience = Audience.stored(audience),
             createdAt = now,
             updatedAt = now,
             replies = mutableListOf(),
@@ -240,9 +243,13 @@ class NotesService(private val project: Project) : Disposable {
         return note.deepCopy()
     }
 
-    fun updateContent(id: String, content: String) = mutate(id) {
-        it.content = content
-        it.updatedAt = nowUtc()
+    fun updateContent(id: String, content: String): Boolean {
+        // What is on the merge request is edited there (Audience.canEdit draws the line).
+        if (find(id)?.source != null) return false
+        return mutate(id) {
+            it.content = content
+            it.updatedAt = nowUtc()
+        }
     }
 
     /**
@@ -261,7 +268,13 @@ class NotesService(private val project: Project) : Disposable {
     }
 
     /** Edit an existing reply's text. */
-    fun updateReply(noteId: String, replyId: String, content: String) = mutate(noteId) { note ->
+    fun updateReply(noteId: String, replyId: String, content: String): Boolean {
+        val reply = find(noteId)?.replies?.firstOrNull { it.id == replyId } ?: return false
+        if (reply.source != null) return false // on the merge request: edited there
+        return updateReplyContent(noteId, replyId, content)
+    }
+
+    private fun updateReplyContent(noteId: String, replyId: String, content: String) = mutate(noteId) { note ->
         note.replies.firstOrNull { it.id == replyId }?.let {
             it.content = content
             note.updatedAt = nowUtc()
@@ -269,7 +282,13 @@ class NotesService(private val project: Project) : Disposable {
     }
 
     /** Remove a single reply from a note. */
-    fun removeReply(noteId: String, replyId: String) = mutate(noteId) { note ->
+    fun removeReply(noteId: String, replyId: String): Boolean {
+        val note = find(noteId) ?: return false
+        if (!Audience.canDelete(note, replyId)) return false // on the merge request: deleted there
+        return removeReplyNow(noteId, replyId)
+    }
+
+    private fun removeReplyNow(noteId: String, replyId: String) = mutate(noteId) { note ->
         note.replies.removeAll { it.id == replyId }
         note.updatedAt = nowUtc()
     }
@@ -282,11 +301,15 @@ class NotesService(private val project: Project) : Disposable {
     /**
      * Change who may see a comment: the thread's first comment, or one reply when
      * [replyId] is given. The default is stored explicitly too. Refused while
-     * the notes file is in a newer format, and for an unknown reply or audience.
+     * the notes file is in a newer format, for an unknown reply or audience, and for
+     * an audience the comment may not take ([Audience.cycleFor]): a published comment
+     * stays on the forge, and a thread with a published reply is never private.
      */
     fun setAudience(noteId: String, replyId: String?, audience: String): Boolean {
         if (audience !in Audience.CYCLE) return false
-        if (replyId != null && find(noteId)?.replies?.any { it.id == replyId } != true) return false
+        val note = find(noteId) ?: return false
+        if (replyId != null && note.replies.none { it.id == replyId }) return false
+        if (!Audience.allowed(note, replyId, audience)) return false
         val stored = Audience.stored(audience)
         return mutate(noteId) { note ->
             if (replyId == null) note.audience = stored
@@ -353,6 +376,9 @@ class NotesService(private val project: Project) : Disposable {
 
     fun removeNote(id: String): Boolean {
         if (blocked != null) return false
+        // A thread with anything on the merge request stays.
+        val current = find(id)
+        if (current != null && !Audience.canDelete(current, null)) return false
         val removed = synchronized(lock) {
             if (model.remove(id)) { locallyDeleted.add(id); true } else false
         }

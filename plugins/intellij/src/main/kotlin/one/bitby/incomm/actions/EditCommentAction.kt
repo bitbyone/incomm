@@ -5,7 +5,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import one.bitby.incomm.editor.IncommEditorTracker
-import one.bitby.incomm.model.AUTHOR_USER
+import one.bitby.incomm.model.Audience
 
 /**
  * "Incomm: Edit" — edits the thread's comment on the caret line in place (inside
@@ -24,7 +24,7 @@ class EditCommentAction : AnAction() {
         val project = e.project
         val note = if (project != null && editor != null) CaretNote.of(project, editor) else null
         e.presentation.isEnabledAndVisible =
-            note != null && note.author == AUTHOR_USER && note.replies.isEmpty()
+            note != null && note.replies.isEmpty() && Audience.canEdit(note, null)
     }
 
     override fun actionPerformed(e: AnActionEvent) {

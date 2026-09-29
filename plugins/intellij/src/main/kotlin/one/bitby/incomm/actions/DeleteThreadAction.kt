@@ -4,6 +4,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import one.bitby.incomm.model.Audience
 import one.bitby.incomm.store.NotesService
 
 /**
@@ -19,8 +20,9 @@ class DeleteThreadAction : AnAction() {
     override fun update(e: AnActionEvent) {
         val editor = e.getData(CommonDataKeys.EDITOR)
         val project = e.project
-        e.presentation.isEnabledAndVisible =
-            project != null && editor != null && CaretNote.of(project, editor) != null
+        val note = if (project != null && editor != null) CaretNote.of(project, editor) else null
+        // A thread with anything on the merge request is deleted there, not here.
+        e.presentation.isEnabledAndVisible = note != null && Audience.canDelete(note, null)
     }
 
     override fun actionPerformed(e: AnActionEvent) {

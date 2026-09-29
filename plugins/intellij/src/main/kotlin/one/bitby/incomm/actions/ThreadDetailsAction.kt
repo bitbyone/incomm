@@ -4,16 +4,16 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
-import one.bitby.incomm.model.Audience
 import one.bitby.incomm.store.NotesService
+import one.bitby.incomm.ui.ThreadDetailsPopup
 
 /**
- * "Incomm: Cycle Thread Audience" - steps the audience of the thread on the caret
- * line (its first comment) through agent, agent + external, external and private.
- * A reply's audience is changed from its own bubble. Enabled only when the caret
- * is inside a thread and the notes file can be written.
+ * "Incomm: Thread Details" - opens [ThreadDetailsPopup] for the thread on the caret
+ * line: every comment of it, to step its audience (h/l), edit it (e) or delete it
+ * (d) from the keyboard. Enabled only when the caret is inside a thread and the
+ * notes file can be written.
  */
-class CycleThreadAudienceAction : AnAction() {
+class ThreadDetailsAction : AnAction() {
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
@@ -23,15 +23,12 @@ class CycleThreadAudienceAction : AnAction() {
         val note = if (project != null && editor != null) CaretNote.of(project, editor) else null
         val writable = project != null && !NotesService.getInstance(project).isBlocked()
         e.presentation.isEnabledAndVisible = note != null && writable
-        if (note != null) {
-            e.presentation.text = "Incomm: Set Thread Audience to " + Audience.label(Audience.next(note.audience))
-        }
     }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val editor = e.getData(CommonDataKeys.EDITOR) ?: return
         val note = CaretNote.of(project, editor) ?: return
-        NotesService.getInstance(project).setAudience(note.id, null, Audience.next(note.audience))
+        ThreadDetailsPopup.show(project, note.id, editor)
     }
 }

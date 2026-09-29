@@ -48,6 +48,18 @@
             <add-to-group group-id="EditorGutterPopupMenu" anchor="last"/>
         </action>
 
+        <!-- Start New Thread with another audience: Find Action and Keymap only, so each
+             can have a shortcut of its own without crowding the context menus. -->
+        <action id="incomm.StartPrivateThread"
+                class="one.bitby.incomm.actions.AddPrivateCommentAction"
+                icon="/icons/addComment.svg"/>
+        <action id="incomm.StartExternalThread"
+                class="one.bitby.incomm.actions.AddExternalCommentAction"
+                icon="/icons/addComment.svg"/>
+        <action id="incomm.StartAgentExternalThread"
+                class="one.bitby.incomm.actions.AddAgentExternalCommentAction"
+                icon="/icons/addComment.svg"/>
+
         <action id="incomm.Reply"
                 class="one.bitby.incomm.actions.ReplyAction"
                 icon="/icons/reply.svg">
@@ -76,8 +88,8 @@
             <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="incomm.ResolveThread"/>
         </action>
 
-        <action id="incomm.CycleThreadAudience"
-                class="one.bitby.incomm.actions.CycleThreadAudienceAction"
+        <action id="incomm.ThreadDetails"
+                class="one.bitby.incomm.actions.ThreadDetailsAction"
                 icon="/icons/audience.svg">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="incomm.ToggleThread"/>
             <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="incomm.ToggleThread"/>
@@ -86,8 +98,8 @@
         <action id="incomm.DeleteThread"
                 class="one.bitby.incomm.actions.DeleteThreadAction"
                 icon="/icons/deleteComment.svg">
-            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="incomm.CycleThreadAudience"/>
-            <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="incomm.CycleThreadAudience"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="incomm.ThreadDetails"/>
+            <add-to-group group-id="EditorGutterPopupMenu" anchor="after" relative-to-action="incomm.ThreadDetails"/>
         </action>
 
         <action id="incomm.OpenExplorer"

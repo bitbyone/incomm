@@ -300,6 +300,15 @@ object NotesExplorerPopup {
                             e.consume()
                         }
                     }
+                    KeyEvent.VK_A -> {
+                        if (e.isControlDown || e.isMetaDown || e.isAltDown) return
+                        val note = selected() ?: return
+                        // `e` in there edits in this pane, where the thread is shown.
+                        ThreadDetailsPopup.show(project, note.id, onEdit = { replyId ->
+                            (rightHost.components.firstOrNull() as? NoteThreadComponent)?.beginEdit(replyId)
+                        })
+                        e.consume()
+                    }
                     KeyEvent.VK_J -> {
                         if (e.isControlDown || e.isMetaDown || e.isAltDown) return
                         if (list.selectedIndex < model.size - 1) list.selectedIndex += 1
@@ -330,7 +339,7 @@ object NotesExplorerPopup {
         val dDel = "Del/${cmd}\u21E7D"
         val dRes = "${cmd}\u21E7R"
         return JBLabel(
-            "<html><small>&nbsp;\u2191\u2193 j/k &nbsp;\u00B7&nbsp; \u23CE go to &nbsp;\u00B7&nbsp; r reply &nbsp;\u00B7&nbsp; " +
+            "<html><small>&nbsp;\u2191\u2193 j/k &nbsp;\u00B7&nbsp; \u23CE go to &nbsp;\u00B7&nbsp; r reply &nbsp;\u00B7&nbsp; a details &nbsp;\u00B7&nbsp; " +
                 "$dDel delete &nbsp;\u00B7&nbsp; $dRes resolve &nbsp;\u00B7&nbsp; " +
                 "$f search &nbsp;\u00B7&nbsp; $o open &nbsp;\u00B7&nbsp; $r resolved &nbsp;\u00B7&nbsp; $x orphaned</small></html>"
         ).apply { border = JBUI.Borders.empty(3, 6) }

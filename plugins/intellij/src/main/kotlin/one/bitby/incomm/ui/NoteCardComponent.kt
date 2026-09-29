@@ -94,8 +94,11 @@ class NoteCardComponent(
     }
 
     /** Start editing the original comment in place (used by the Edit action). */
-    fun beginEditOriginal() {
-        editingKey = KEY_ORIGINAL
+    fun beginEditOriginal() = beginEdit(null)
+
+    /** Start editing one comment in place: the original when [replyId] is null (thread details' `e`). */
+    fun beginEdit(replyId: String?) {
+        editingKey = replyId?.let { keyReply(it) } ?: KEY_ORIGINAL
         rebuild()
     }
 
@@ -157,9 +160,11 @@ class NoteCardComponent(
             toolbar.add(ThreadUi.iconButton(AllIcons.Actions.Commit, "Resolve thread") { onResolve(true) })
         }
         toolbar.add(ThreadUi.iconButton(IncommIcons.REPLY, "Reply") { onReply() })
-        toolbar.add(ThreadUi.iconButton(IncommIcons.DELETE_COMMENT, "Delete thread") {
-            onDelete()
-        })
+        if (Audience.canDelete(note, null)) {
+            toolbar.add(ThreadUi.iconButton(IncommIcons.DELETE_COMMENT, "Delete thread") {
+                onDelete()
+            })
+        }
         toolbar.revalidate()
         toolbar.repaint()
     }
@@ -198,15 +203,20 @@ class NoteCardComponent(
             bubble.add(field)
             focusAfterBuild = field
         } else {
-            icons.add(ThreadUi.audienceButton(audience, effective) {
+            // A published comment only flips between agent + external and external.
+            val cycle = Audience.cycleFor(note, replyId)
+            icons.add(ThreadUi.audienceButton(audience, effective, cycle) {
                 // The service publishes the change; the editor refreshes this card the
                 // way it does for any other change to the note.
-                NotesService.getInstance(project).setAudience(noteId, replyId, Audience.next(audience))
+                NotesService.getInstance(project).setAudience(noteId, replyId, Audience.next(audience, cycle))
             })
-            if (author == AUTHOR_USER) {
+            // What is on the merge request is edited and deleted there, not here.
+            if (Audience.canEdit(note, replyId)) {
                 icons.add(ThreadUi.iconButton(IncommIcons.EDIT_COMMENT, "Edit") { editingKey = key; rebuild() })
             }
-            icons.add(ThreadUi.iconButton(IncommIcons.DELETE_COMMENT, "Delete") { deleteMessage(key, replyId) })
+            if (Audience.canDelete(note, replyId)) {
+                icons.add(ThreadUi.iconButton(IncommIcons.DELETE_COMMENT, "Delete") { deleteMessage(key, replyId) })
+            }
             icons.isVisible = false // revealed on hover
             headerRow.add(icons, BorderLayout.EAST)
             bubble.add(headerRow)

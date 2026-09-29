@@ -133,8 +133,8 @@ object ThreadUi {
     }
 
     /** The per-comment control that steps a comment's audience. */
-    fun audienceButton(stored: String?, effective: String, onClick: () -> Unit): InplaceButton =
-        iconButton(IncommIcons.AUDIENCE, Audience.tooltip(stored, effective), onClick)
+    fun audienceButton(stored: String?, effective: String, cycle: List<String>, onClick: () -> Unit): InplaceButton =
+        iconButton(IncommIcons.AUDIENCE, Audience.tooltip(stored, effective, cycle), onClick)
 
     fun iconButton(icon: Icon, tooltip: String, onClick: () -> Unit): InplaceButton {
         val button = InplaceButton(IconButton(tooltip, icon, icon), ActionListener { onClick() })

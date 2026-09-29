@@ -77,6 +77,47 @@ class NotesServiceTest : BasePlatformTestCase() {
         service.removeNote(note.id)
     }
 
+    fun testAPublishedCommentStaysOnTheForge() {
+        val base = project.basePath ?: return
+        val service = NotesService.getInstance(project)
+        val store = NotesStore(Paths.get(base))
+        val onDisk = store.load()
+        onDisk.notes.add(
+            Note(
+                id = "pub00001", file = "mr.txt", content = "mine", author = AUTHOR_USER,
+                audience = "agent", createdAt = nowUtc(), updatedAt = nowUtc(),
+                replies = mutableListOf(
+                    one.bitby.incomm.model.Reply(
+                        id = "rpub0001", author = AUTHOR_USER, content = "from the MR",
+                        audience = "agent+external", source = one.bitby.incomm.model.Source(id = 501),
+                    ),
+                ),
+            ),
+        )
+        store.save(onDisk)
+        service.reload()
+
+        assertFalse("agent-only would take it off the forge", service.setAudience("pub00001", "rpub0001", "agent"))
+        assertFalse(service.setAudience("pub00001", "rpub0001", "private"))
+        assertFalse("a private root would hide the published reply", service.setAudience("pub00001", null, "private"))
+        assertTrue(service.setAudience("pub00001", "rpub0001", "external"))
+        assertTrue(service.setAudience("pub00001", null, "external"))
+        val note = service.find("pub00001")!!
+        assertEquals(listOf("external", "external"), listOf(note.audience, note.replies[0].audience))
+
+        // Neither edited nor deleted here: it is on the merge request.
+        assertFalse(service.updateReply("pub00001", "rpub0001", "changed"))
+        assertFalse(service.removeReply("pub00001", "rpub0001"))
+        assertFalse("the root would take the published reply with it", service.removeNote("pub00001"))
+        assertEquals("from the MR", service.find("pub00001")!!.replies[0].content)
+        assertTrue("the root itself is still yours to edit", service.updateContent("pub00001", "mine, revised"))
+        assertFalse(one.bitby.incomm.model.Audience.canEdit(note, "rpub0001"))
+        assertFalse(one.bitby.incomm.model.Audience.canDelete(note, null))
+        assertTrue(one.bitby.incomm.model.Audience.canEdit(note, null))
+        service.clearAll()
+        service.flushWrites()
+    }
+
     fun testRemoveNotesForFile() {
         val service = NotesService.getInstance(project)
         service.addNote("a.txt", 1, 1, "one", AUTHOR_USER, listOf("x"))

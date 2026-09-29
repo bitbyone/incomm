@@ -1,5 +1,6 @@
 package one.bitby.incomm.editor
 
+import one.bitby.incomm.model.AUDIENCE_AGENT
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationActivationListener
 import com.intellij.openapi.application.ApplicationManager
@@ -138,15 +139,15 @@ class IncommEditorTracker(private val project: Project) : Disposable {
     }
 
     /** Begin composing a new comment for [startLine]..[endLine] inline in [editor]. */
-    fun startInlineAdd(editor: Editor, startLine: Int, endLine: Int) {
+    fun startInlineAdd(editor: Editor, startLine: Int, endLine: Int, audience: String = AUDIENCE_AGENT) {
         if (NotesService.getInstance(project).isBlocked()) return
-        inlayControllers[editor]?.startAdd(startLine, endLine)
+        inlayControllers[editor]?.startAdd(startLine, endLine, audience)
     }
 
-    /** Begin editing [noteId]'s original comment in place, in [editor]'s card. */
-    fun startInlineEdit(editor: Editor, noteId: String) {
+    /** Begin editing one comment of [noteId] in place, in [editor]'s card: the original when [replyId] is null. */
+    fun startInlineEdit(editor: Editor, noteId: String, replyId: String? = null) {
         if (NotesService.getInstance(project).isBlocked()) return
-        inlayControllers[editor]?.startEdit(noteId)
+        inlayControllers[editor]?.startEdit(noteId, replyId)
     }
 
     /** Light the gutter band for [noteId] (or clear it) as its card is hovered. */

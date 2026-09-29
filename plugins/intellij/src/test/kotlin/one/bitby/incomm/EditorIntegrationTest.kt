@@ -152,6 +152,115 @@ class EditorIntegrationTest : BasePlatformTestCase() {
         service.flushWrites()
     }
 
+    fun testThreadDetailsPopupStepsEachComment() {
+        val vf = openOnDisk("audience.txt", "l1\nl2\nl3\n")
+        val editor = myFixture.editor
+        val rel = IncommPaths.relPath(project, vf)!!
+        val service = NotesService.getInstance(project)
+        val note = service.addNote(rel, 2, 2, "root", AUTHOR_USER, Anchoring.splitLines(editor.document.text))
+        service.addReply(note.id, "answer", one.bitby.incomm.model.AUTHOR_AGENT)
+        editor.caretModel.moveToLogicalPosition(com.intellij.openapi.editor.LogicalPosition(1, 0))
+
+        myFixture.performEditorAction("incomm.ThreadDetails")
+        val handle = one.bitby.incomm.ui.ThreadDetailsPopup.current
+        assertNotNull("the action opens the audience popup", handle)
+        handle!!
+        assertEquals(listOf(null, service.find(note.id)!!.replies[0].id), handle.rows().map { it.replyId })
+
+        fun press(code: Int, char: Char = java.awt.event.KeyEvent.CHAR_UNDEFINED) {
+            // Straight to the list's listeners: a dispatched key event is retargeted to
+            // the focus owner, which a headless test does not have.
+            val list = handle.list
+            val event = java.awt.event.KeyEvent(list, java.awt.event.KeyEvent.KEY_PRESSED, System.currentTimeMillis(), 0, code, char)
+            list.keyListeners.forEach { it.keyPressed(event) }
+        }
+        fun audiences() = service.find(note.id)!!.let { listOf(it.audience, it.replies[0].audience) }
+
+        press(java.awt.event.KeyEvent.VK_L, 'l')
+        assertEquals("l steps the root on", listOf("agent+external", "agent"), audiences())
+        press(java.awt.event.KeyEvent.VK_J, 'j')
+        press(java.awt.event.KeyEvent.VK_RIGHT)
+        press(java.awt.event.KeyEvent.VK_RIGHT)
+        assertEquals("j picks the reply, right steps it", listOf("agent+external", "external"), audiences())
+        press(java.awt.event.KeyEvent.VK_H, 'h')
+        assertEquals("h steps back", listOf("agent+external", "agent+external"), audiences())
+        press(java.awt.event.KeyEvent.VK_K, 'k')
+        press(java.awt.event.KeyEvent.VK_LEFT)
+        press(java.awt.event.KeyEvent.VK_LEFT)
+        assertEquals("k back to the root, left wraps to private", listOf("private", "agent+external"), audiences())
+        assertTrue("the reply reads private through its root", handle.rows()[1].inherited)
+
+        // Deleting the thread closes the popup.
+        service.removeNote(note.id)
+        UIUtil.dispatchAllInvocationEvents()
+        assertTrue(handle.popup.isDisposed)
+        service.flushWrites()
+    }
+
+    fun testThreadDetailsEditsAndDeletesFromTheKeyboard() {
+        val vf = openOnDisk("details.txt", "l1\nl2\nl3\n")
+        val editor = myFixture.editor
+        val rel = IncommPaths.relPath(project, vf)!!
+        val service = NotesService.getInstance(project)
+        val tracker = IncommEditorTracker.getInstance(project)
+        tracker.start()
+        val note = service.addNote(rel, 2, 2, "root", AUTHOR_USER, Anchoring.splitLines(editor.document.text))
+        service.addReply(note.id, "mine", AUTHOR_USER)
+        service.addReply(note.id, "the agent's", one.bitby.incomm.model.AUTHOR_AGENT)
+        UIUtil.dispatchAllInvocationEvents()
+        val (mine, agents) = service.find(note.id)!!.replies.map { it.id }
+
+        // From the explorer: e hands the chosen comment to the pane's editor.
+        var edited: String? = "none"
+        var handle = one.bitby.incomm.ui.ThreadDetailsPopup.show(project, note.id, onEdit = { edited = it })!!
+        handle.select(2)
+        handle.edit()
+        assertTrue("an agent's words are not editable", handle.hint.text.contains("your own"))
+        assertFalse(handle.popup.isDisposed)
+        handle.select(1)
+        handle.edit()
+        UIUtil.dispatchAllInvocationEvents()
+        assertEquals("the reply goes to the pane", mine, edited)
+        assertTrue("and the popup makes way", handle.popup.isDisposed)
+
+        // From the editor: the card opens that reply for editing in place.
+        handle = one.bitby.incomm.ui.ThreadDetailsPopup.show(project, note.id, editor)!!
+        handle.select(1)
+        handle.edit()
+        UIUtil.dispatchAllInvocationEvents()
+        val fields = descendants<com.intellij.ui.EditorTextField>(editor.contentComponent)
+        assertTrue("the reply is being edited in its card", fields.any { it.text == "mine" })
+
+        // d deletes the selected reply; on the original it takes the thread.
+        handle = one.bitby.incomm.ui.ThreadDetailsPopup.show(project, note.id)!!
+        handle.select(2)
+        handle.delete()
+        assertEquals(listOf(mine), service.find(note.id)!!.replies.map { it.id })
+        assertFalse(agents in service.find(note.id)!!.replies.map { it.id })
+        handle.select(0)
+        handle.delete()
+        UIUtil.dispatchAllInvocationEvents()
+        assertNull(service.find(note.id))
+        assertTrue(handle.popup.isDisposed)
+        service.flushWrites()
+    }
+
+    fun testStartThreadVariantsCarryTheirAudience() {
+        val manager = com.intellij.openapi.actionSystem.ActionManager.getInstance()
+        assertTrue(manager.getAction("incomm.StartPrivateThread") is one.bitby.incomm.actions.AddPrivateCommentAction)
+        assertTrue(manager.getAction("incomm.StartExternalThread") is one.bitby.incomm.actions.AddExternalCommentAction)
+        assertTrue(manager.getAction("incomm.StartAgentExternalThread") is one.bitby.incomm.actions.AddAgentExternalCommentAction)
+        assertNull("the audience-only action is gone", manager.getAction("incomm.ChangeAudience"))
+
+        val service = NotesService.getInstance(project)
+        val private = service.addNote("v.txt", 1, 1, "to self", AUTHOR_USER, listOf("a"), audience = "private")
+        val plain = service.addNote("v.txt", 1, 1, "plain", AUTHOR_USER, listOf("a"))
+        assertEquals("private", service.find(private.id)!!.audience)
+        assertEquals("agent", service.find(plain.id)!!.audience)
+        service.clearAll()
+        service.flushWrites()
+    }
+
     fun testCaretInRangeLightsGutterBand() {
         val vf = openOnDisk("band.txt", "a\nb\nc\nd\ne\n")
         val editor = myFixture.editor

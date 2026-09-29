@@ -303,11 +303,12 @@ Contextual (editor + gutter popup; enabled only when relevant; dynamic text wher
 | Action id | Text | When enabled |
 |-----------|------|--------------|
 | `incomm.StartThread` | Incomm: Start New Thread | file present; uses selection range or caret line |
+| `incomm.StartPrivateThread` / `StartExternalThread` / `StartAgentExternalThread` | Incomm: Start New Private / External / Agent + External Thread | as Start New Thread, with that audience (`AddCommentAction(audience)`); Find Action and Keymap only, not in the menus |
 | `incomm.Reply` | Incomm: Reply | caret in a thread's range |
 | `incomm.EditComment` | Incomm: Edit | caret in a **user**-authored thread **with no replies** (unambiguous target) |
 | `incomm.ResolveThread` | Incomm: Resolve/Reopen Thread | caret in a thread (resolve also hides card) |
 | `incomm.ToggleThread` | Incomm: Show/Hide Thread | caret in a thread |
-| `incomm.CycleThreadAudience` | Incomm: Cycle Thread Audience | caret in a thread, plugin not blocked; steps the thread's **root** comment through the audience cycle |
+| `incomm.ThreadDetails` | Incomm: Thread Details | caret in a thread, plugin not blocked; opens `ui/ThreadDetailsPopup` for every comment of the thread (audience, edit, delete) |
 | `incomm.DeleteThread` | Incomm: Delete Thread | caret in a thread (no confirmation) |
 
 Tools-menu / global:
@@ -335,6 +336,19 @@ shows `private` while its stored value is untouched. Changing it goes through
 while blocked), and the card refreshes through the existing `notesChanged` flow: `Note` is a data
 class, so `rebuildInlays` already sees the change. Nothing in `editor/` positions or resizes
 anything for this.
+
+**Thread details** (`ui/ThreadDetailsPopup`, action `incomm.ThreadDetails`, `a` in the
+explorer) lists every comment of one thread (`Audience.rows`: root first, then replies), with
+a one-line preview on the left and `◀ audience ▶` on the right, for keyboard-only work. ↑/↓ or
+j/k pick a comment; ←/→ or h/l step its **stored** audience with `Audience.next` /
+`Audience.previous` within `AudienceRow.cycle`, saved immediately through `setAudience`; `e`
+closes the popup and edits that comment in place (`IncommEditorTracker.startInlineEdit(editor,
+noteId, replyId)` from an editor, `NoteThreadComponent.beginEdit(replyId)` from the explorer);
+`d` deletes it (`removeReply`, or `removeNote` for the root). A refused `e`/`d` (someone
+else's words, or on the merge request: `AudienceRow.editable` / `deletable`) says why in the
+hint line. Esc/Enter close. A reply under a `private` root shows
+its stored value dimmed (`AudienceRow.inherited`). The popup subscribes to `notesChanged` so it
+follows the agent's writes, and closes when the thread is deleted. Neovim has the same dialog.
 
 Terminology: a **thread** is the whole envelope (`Note` in code); its original **comment**
 is what started it, followed by **replies**. Every action is prefixed `Incomm:`.

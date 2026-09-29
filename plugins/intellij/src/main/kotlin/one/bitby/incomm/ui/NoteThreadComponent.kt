@@ -90,6 +90,13 @@ class NoteThreadComponent(
         rebuild()
     }
 
+    /** Start editing one comment in place: the original when [replyId] is null (thread details' `e`). */
+    fun beginEdit(replyId: String?) {
+        addingReply = false
+        editingKey = replyId?.let { keyReply(it) } ?: KEY_ORIGINAL
+        rebuild()
+    }
+
     fun rebuild() {
         val note = NotesService.getInstance(project).find(noteId)
         if (note == null) {
@@ -261,10 +268,11 @@ class NoteThreadComponent(
             editingKey = null
             rebuild()
         })
-        toolbar.add(iconButton(IncommIcons.DELETE_COMMENT, "Delete thread") {
-            NotesService.getInstance(project).removeNote(noteId)
-            onNoteDeleted()
-        })
+        if (Audience.canDelete(note, null)) {
+            toolbar.add(iconButton(IncommIcons.DELETE_COMMENT, "Delete thread") {
+                if (NotesService.getInstance(project).removeNote(noteId)) onNoteDeleted()
+            })
+        }
         toolbar.revalidate()
         toolbar.repaint()
     }
@@ -309,13 +317,18 @@ class NoteThreadComponent(
             card.add(editor)
             focusAfterBuild = editor
         } else {
-            icons.add(ThreadUi.audienceButton(audience, effective) {
-                NotesService.getInstance(project).setAudience(noteId, replyId, Audience.next(audience))
+            // A published comment only flips between agent + external and external.
+            val cycle = Audience.cycleFor(note, replyId)
+            icons.add(ThreadUi.audienceButton(audience, effective, cycle) {
+                NotesService.getInstance(project).setAudience(noteId, replyId, Audience.next(audience, cycle))
             })
-            if (author == AUTHOR_USER) {
+            // What is on the merge request is edited and deleted there, not here.
+            if (Audience.canEdit(note, replyId)) {
                 icons.add(iconButton(IncommIcons.EDIT_COMMENT, "Edit") { editingKey = key; addingReply = false; rebuild() })
             }
-            icons.add(iconButton(IncommIcons.DELETE_COMMENT, "Delete") { deleteMessage(key, replyId) })
+            if (Audience.canDelete(note, replyId)) {
+                icons.add(iconButton(IncommIcons.DELETE_COMMENT, "Delete") { deleteMessage(key, replyId) })
+            }
             headerRow.add(icons, BorderLayout.EAST)
             card.add(headerRow)
             card.add(displayArea(text, author))

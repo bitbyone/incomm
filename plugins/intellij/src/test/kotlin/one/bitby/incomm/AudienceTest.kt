@@ -4,7 +4,11 @@ import one.bitby.incomm.model.AUDIENCE_AGENT
 import one.bitby.incomm.model.AUDIENCE_BOTH
 import one.bitby.incomm.model.AUDIENCE_EXTERNAL
 import one.bitby.incomm.model.AUDIENCE_PRIVATE
+import one.bitby.incomm.model.AUTHOR_AGENT
+import one.bitby.incomm.model.AUTHOR_USER
 import one.bitby.incomm.model.Audience
+import one.bitby.incomm.model.Note
+import one.bitby.incomm.model.Reply
 import one.bitby.incomm.model.Source
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -103,5 +107,72 @@ class AudienceTest {
             assertEquals(Audience.normalize(own), Audience.effective(AUDIENCE_BOTH, own))
             assertEquals(Audience.normalize(own), Audience.effective(AUDIENCE_AGENT, own))
         }
+    }
+
+    @Test
+    fun `a published comment only flips between agent + external and external`() {
+        val note = Note(
+            id = "n1", audience = AUDIENCE_AGENT,
+            replies = mutableListOf(
+                Reply(id = "r1", audience = AUDIENCE_BOTH, source = Source(id = 501)),
+                Reply(id = "r2", audience = AUDIENCE_AGENT),
+            ),
+        )
+        val published = Audience.cycleFor(note, "r1")
+        assertEquals(listOf(AUDIENCE_BOTH, AUDIENCE_EXTERNAL), published)
+        assertEquals(AUDIENCE_EXTERNAL, Audience.next(AUDIENCE_BOTH, published))
+        assertEquals(AUDIENCE_BOTH, Audience.next(AUDIENCE_EXTERNAL, published))
+        assertEquals(AUDIENCE_EXTERNAL, Audience.previous(AUDIENCE_BOTH, published))
+        assertEquals("an older file's agent moves on into the cycle", AUDIENCE_BOTH, Audience.next(AUDIENCE_AGENT, published))
+        assertFalse(Audience.allowed(note, "r1", AUDIENCE_AGENT))
+        assertFalse(Audience.allowed(note, "r1", AUDIENCE_PRIVATE))
+
+        // The root may be anything but private: that would hide the published reply.
+        assertEquals(listOf(AUDIENCE_AGENT, AUDIENCE_BOTH, AUDIENCE_EXTERNAL), Audience.cycleFor(note, null))
+        assertEquals(AUDIENCE_AGENT, Audience.next(AUDIENCE_EXTERNAL, Audience.cycleFor(note, null)))
+        // An unpublished reply keeps the full cycle.
+        assertEquals(Audience.CYCLE, Audience.cycleFor(note, "r2"))
+        assertEquals(listOf(Audience.CYCLE.take(3), published, Audience.CYCLE), Audience.rows(note).map { it.cycle })
+
+        // The root published itself.
+        assertEquals(published, Audience.cycleFor(Note(id = "n2", source = Source(url = "https://f/x")), null))
+        assertEquals(
+            "Audience: agent + external - click to change to external",
+            Audience.tooltip(AUDIENCE_BOTH, AUDIENCE_BOTH, published),
+        )
+    }
+
+    @Test
+    fun `previous undoes next and wraps round`() {
+        for (a in Audience.CYCLE) assertEquals(a, Audience.previous(Audience.next(a)))
+        assertEquals(AUDIENCE_PRIVATE, Audience.previous(null))
+        assertEquals(AUDIENCE_AGENT, Audience.previous(AUDIENCE_BOTH))
+        assertEquals("an unknown value counts as private", AUDIENCE_EXTERNAL, Audience.previous("team"))
+    }
+
+    @Test
+    fun `the dialog lists the root then each reply with what it stores`() {
+        val note = Note(
+            id = "n1", author = AUTHOR_USER, authorTitle = "Jan", content = "root",
+            audience = AUDIENCE_PRIVATE, source = Source(id = 1),
+            replies = mutableListOf(
+                Reply(id = "r1", author = AUTHOR_AGENT, content = "answer", audience = AUDIENCE_BOTH),
+                Reply(id = "r2", author = AUTHOR_USER, content = "mine", audience = AUDIENCE_PRIVATE),
+                Reply(id = "r3", author = AUTHOR_AGENT, content = "old", audience = null),
+            ),
+        )
+        val rows = Audience.rows(note)
+        assertEquals(listOf(null, "r1", "r2", "r3"), rows.map { it.replyId })
+        assertEquals(listOf(AUDIENCE_PRIVATE, AUDIENCE_BOTH, AUDIENCE_PRIVATE, AUDIENCE_AGENT), rows.map { it.audience })
+        assertEquals(
+            "a reply is private through its root unless it is private itself",
+            listOf(false, true, false, true),
+            rows.map { it.inherited },
+        )
+        assertEquals(listOf(true, false, false, false), rows.map { it.published })
+        assertEquals("root", rows[0].content)
+
+        note.audience = AUDIENCE_EXTERNAL
+        assertTrue(Audience.rows(note).none { it.inherited })
     }
 }

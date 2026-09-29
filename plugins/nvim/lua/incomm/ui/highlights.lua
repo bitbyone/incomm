@@ -255,7 +255,7 @@ local function derive()
   local h, s = to_hsl(purple(accents.User))
   local dark = vim.o.background ~= "light"
   -- Kept violet: a scheme's "purple" can lean pink or blue.
-  local light = from_hsl(math.min(math.max(h, 262), 292), math.max(s, 0.45), dark and 0.74 or 0.5)
+  local light = from_hsl(math.min(math.max(h, 262), 292), math.max(s, 0.45), dark and 0.64 or 0.42)
   vim.api.nvim_set_hl(0, "IncommBorderExternal", { fg = blend(light, surface, 0.85) })
   vim.api.nvim_set_hl(0, "IncommBorderPrivate", { fg = blend(color_of("IncommPrivate", "fg") or muted, surface, 0.6) })
 

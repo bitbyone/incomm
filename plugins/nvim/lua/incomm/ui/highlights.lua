@@ -252,10 +252,11 @@ local function derive()
   -- see: a grey one. Both as strong as an author's box, so they read as kinds.
   -- Light purple: the scheme's hue, lifted to a pastel in HSL (mixing toward the
   -- text colour greys it instead), and toward the editor only a little.
-  local h, s = to_hsl(purple(accents.User))
+  local h = to_hsl(purple(accents.User))
   local dark = vim.o.background ~= "light"
-  -- Kept violet: a scheme's "purple" can lean pink or blue.
-  local light = from_hsl(math.min(math.max(h, 262), 292), math.max(s, 0.45), dark and 0.48 or 0.3)
+  -- Kept violet: a scheme's "purple" can lean pink or blue. And muted - a
+  -- purple-grey - whatever the scheme's own saturation, so it sits with the code.
+  local light = from_hsl(math.min(math.max(h, 262), 292), 0.28, dark and 0.5 or 0.34)
   vim.api.nvim_set_hl(0, "IncommBorderExternal", { fg = blend(light, surface, 0.85) })
   vim.api.nvim_set_hl(0, "IncommBorderPrivate", { fg = blend(color_of("IncommPrivate", "fg") or muted, surface, 0.6) })
 

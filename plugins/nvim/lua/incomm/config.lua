@@ -78,6 +78,9 @@ local defaults = {
     --- Percent that the card's text is pulled back toward the editor, so a
     --- thread reads more quietly than the code it hangs over.
     dim = 30,
+    --- Percent darker than the editor's background that a bubble is filled,
+    --- so it stands off the code as a card. 0 leaves bubbles unfilled.
+    fill = 5,
   },
 
   --- The composer: the float a comment is written in.

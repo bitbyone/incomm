@@ -394,7 +394,7 @@ T.test("the header tab is padded on both sides of the state", function()
   end)
 end)
 
-T.test("nothing inside a bubble is painted with a background group", function()
+T.test("a bubble is filled to its edges: the card's fill under every cell of the box", function()
   T.with_tmpdir(function(dir)
     local bufnr, svc = open_fixture(dir)
     local note = svc:add_note("src/main.go", 4, 4, "a thread")
@@ -403,15 +403,28 @@ T.test("nothing inside a bubble is painted with a background group", function()
 
     local card = marks(bufnr, render.ns)[1][4].virt_lines
     for i = 2, #card do -- row 1 is the header tab
+      local filled = false
       for _, chunk in ipairs(card[i]) do
         local group = chunk[2]
-        if group then
+        if type(group) == "table" then
+          -- the fill first, the chunk's own colour stacked over it
+          T.eq(group[1], "IncommCardFill", "row " .. i)
+          local own = group[2]
           T.ok(
-            group:match("^IncommBorder") or group:match("^IncommName") or group:match("^IncommTime") or group:match("^IncommText")
-              or group:match("^IncommBadge"),
-            "row " .. i .. " uses " .. group .. ", which should be a border, a text or a badge group"
+            own:match("^IncommBorder") or own:match("^IncommName") or own:match("^IncommTime") or own:match("^IncommText")
+              or own:match("^IncommBadge"),
+            "row " .. i .. " uses " .. own .. ", which should be a border, a text or a badge group"
           )
+          filled = true
+        elseif group then
+          T.eq(group, "IncommCardFill", "row " .. i .. ": a padding chunk")
+          filled = true
+        else
+          T.ok(chunk[1]:match("^%s*$"), "row " .. i .. ": only the indent before a box is unfilled")
         end
+      end
+      if #card[i] > 1 or (card[i][1] and card[i][1][1] ~= "") then
+        T.ok(filled, "row " .. i .. " is filled")
       end
     end
   end)

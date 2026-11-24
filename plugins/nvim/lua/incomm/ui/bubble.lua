@@ -5,10 +5,12 @@
 -- buffer. Keeping one builder means a reply looks the same wherever it is read,
 -- and the box is what separates it from the comment above it.
 --
--- Nothing inside a bubble is filled. A `virt_lines` background stops at the end
--- of the text it is drawn on and cannot be made to meet the border's own cell,
--- so a filled bubble always showed a seam along its right edge. The border
--- carries the author's colour instead, which is all the fill was ever for.
+-- A bubble is filled with `IncommCardFill`, a shade darker than the editor, so
+-- it stands off the code as a card. The fill takes the border's own cells as
+-- well as everything between them -- every row is padded out to the box's
+-- width, so it meets the right edge without a seam -- and each chunk's own
+-- group is stacked over it, keeping its colour. The border carries the
+-- author's colour (or the audience's, for your own words).
 --
 -- A row is a list of `{ text, highlight }` chunks, which is the shape
 -- `virt_lines` wants; `to_lines` flattens rows into buffer lines plus the byte
@@ -118,7 +120,9 @@ function M.build(opts)
     if pad then
       vim.list_extend(out, vim.deepcopy(pad))
     end
-    vim.list_extend(out, chunks)
+    for _, chunk in ipairs(chunks) do
+      out[#out + 1] = { chunk[1], chunk[2] and { "IncommCardFill", chunk[2] } or "IncommCardFill" }
+    end
     rows[#rows + 1] = out
   end
 
@@ -197,12 +201,16 @@ function M.to_lines(rows, offset)
       local piece = chunk[1]
       text[#text + 1] = piece
       if chunk[2] and piece ~= "" then
-        highlights[#highlights + 1] = {
-          row = offset + i - 1,
-          col = col,
-          end_col = col + #piece,
-          hl = chunk[2],
-        }
+        -- a stack of groups (the card's fill under the chunk's own) is laid
+        -- one range per group, the later ones over the earlier
+        for _, group in ipairs(type(chunk[2]) == "table" and chunk[2] or { chunk[2] }) do
+          highlights[#highlights + 1] = {
+            row = offset + i - 1,
+            col = col,
+            end_col = col + #piece,
+            hl = group,
+          }
+        end
       end
       col = col + #piece
     end

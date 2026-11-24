@@ -245,9 +245,9 @@ T.test("the box is the agent's colour for the agent, and says who sees your own"
   T.eq(hl.border_suffix("user", "team"), "Private", "an unknown audience is private")
 
   local rows = bubble.build({ author = "user", content = "x", width = 30, audience = "external" })
-  T.eq(rows[1][#rows[1]][2], "IncommBorderExternal", "the top edge")
+  T.eq(rows[1][#rows[1]][2], { "IncommCardFill", "IncommBorderExternal" }, "the top edge, on the card's fill")
   rows = bubble.build({ author = "agent", content = "x", width = 30, audience = "private" })
-  T.eq(rows[1][#rows[1]][2], "IncommBorderAgent")
+  T.eq(rows[1][#rows[1]][2], { "IncommCardFill", "IncommBorderAgent" })
   hl.setup()
   for _, group in ipairs({ "IncommBorderExternal", "IncommBorderPrivate" }) do
     T.ok(next(vim.api.nvim_get_hl(0, { name = group })) ~= nil, group .. " is defined")

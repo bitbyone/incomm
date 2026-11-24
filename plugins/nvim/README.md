@@ -164,6 +164,7 @@ require("incomm").setup({
     reply_indent = 2,
     trailing_blank = false,
     dim = 30,              -- % the card's text is pulled back toward the editor
+    fill = 5,              -- % darker than the editor that a bubble is filled (0: none)
   },
   composer = {
     save = { "<D-CR>", "<C-CR>", "<C-s>" },  -- Cmd-Enter, as in the IDE
@@ -221,7 +222,8 @@ resolve to:
 From those it derives the bubble borders, the dimmed body text, the calmed
 state words and gutter signs: `IncommBorder{User,Agent,External,Private}`, `IncommName*`,
 `IncommTime*`, `IncommText*`, `IncommCardState*`, `IncommSign*`, plus
-`IncommCard` / `IncommCardLine` for the little header tab. Only orphaned keeps
+`IncommCard` / `IncommCardLine` for the little header tab, and `IncommCardFill`,
+the bubbles' fill (the editor `card.fill` % darker). Only orphaned keeps
 its full strength — it is the state that means something needs doing.
 
 Nothing inside a bubble is filled. A `virt_lines` background stops where its

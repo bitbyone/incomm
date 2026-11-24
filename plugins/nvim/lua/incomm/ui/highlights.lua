@@ -182,6 +182,7 @@ local function derive()
     -- Nothing to mix with: the derived groups borrow the base ones. Cards are
     -- still legible, just not tuned to the theme.
     vim.api.nvim_set_hl(0, "IncommCard", { link = "Normal" })
+    vim.api.nvim_set_hl(0, "IncommCardFill", {})
     vim.api.nvim_set_hl(0, "IncommCardLine", { link = "IncommMuted" })
     -- No true colour to mix: the nearest the scheme's own groups can do.
     vim.api.nvim_set_hl(0, "IncommBorderExternal", { link = "Statement", default = true })
@@ -219,7 +220,21 @@ local function derive()
     Orphaned = color_of("IncommStateOrphaned", "fg") or text,
   }
 
-  -- The only filled thing on a card: the little tab naming the line and state.
+  -- A bubble's fill: the editor a twentieth darker, so a card stands off the
+  -- code without a hue of its own.
+  -- `card.fill` is the share; 0 leaves bubbles unfilled.
+  local share = (card.fill or 5) / 100
+  if share > 0 then
+    local r, g, b = split(surface)
+    local function shade(v)
+      return math.floor(v * (1 - share) + 0.5)
+    end
+    vim.api.nvim_set_hl(0, "IncommCardFill", { bg = shade(r) * 0x10000 + shade(g) * 0x100 + shade(b) })
+  else
+    vim.api.nvim_set_hl(0, "IncommCardFill", {})
+  end
+
+  -- The little tab naming the line and state.
   local card_bg = blend(text, surface, 0.05)
   vim.api.nvim_set_hl(0, "IncommCard", { bg = card_bg })
   vim.api.nvim_set_hl(0, "IncommCardLine", { fg = blend(muted, surface, keep), bg = card_bg, italic = muted_italic })

@@ -30,7 +30,6 @@ local links = {
   IncommStateOrphaned = "DiagnosticError",
   IncommAddHint = "Comment",
   IncommComposerTitle = "FloatTitle",
-  IncommComposerHint = "Comment",
   IncommExplorer = "NormalFloat",
   IncommExplorerBorder = "FloatBorder",
   IncommExplorerTitle = "FloatTitle",

@@ -189,7 +189,7 @@ end
 ---@field svc incomm.Service
 ---@field note incomm.Note
 ---@field title string
----@field footer string key hints
+---@field footer incomm.Hint|string key hints (ui/hints.lua)
 ---@field filter? fun(row: table): boolean which comments are listed; all by default
 ---@field right? fun(row: table): table[], integer chunks for the right of the first line, and their width
 ---@field keys? table<string, fun(self: table, row: table)> extra keys, called with the selected row
@@ -234,13 +234,13 @@ function M.open(opts)
     border = "rounded",
     title = " " .. opts.title .. " ",
     title_pos = "left",
-    footer = " " .. opts.footer .. " ",
+    footer = require("incomm.ui.hints").chunks(opts.footer),
     footer_pos = "right",
     zindex = 70, -- over the explorer, which it can be opened from
   })
   -- The composer's look: the float's own background, darker than the code
   -- in most schemes, so the dialog stands off what is behind it.
-  vim.wo[self.win].winhighlight = "FloatTitle:IncommComposerTitle,FloatFooter:IncommComposerHint"
+  vim.wo[self.win].winhighlight = "FloatTitle:IncommComposerTitle"
   vim.wo[self.win].wrap = false
 
   -- The selection says where you are; a block cursor would only cover the indent.

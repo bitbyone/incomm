@@ -730,3 +730,18 @@ T.test("threads are per file", function()
 end)
 
 service.reset()
+
+T.test("footer hints: the key lit, what it does muted, on the border's background", function()
+  local hints = require("incomm.ui.hints")
+  vim.api.nvim_set_hl(0, "FloatBorder", { fg = 0x555555, bg = 0x101010 })
+  T.eq(hints.parse("j/k comment · ⏎ edit · esc close"), { { "j/k", "comment" }, { "⏎", "edit" }, { "esc", "close" } })
+  local chunks = hints.chunks("j/k comment · esc close")
+  local text = table.concat(vim.tbl_map(function(c) return c[1] end, chunks))
+  T.eq(text, " j/k comment · esc close ")
+  T.eq(chunks[2], { "j/k", "IncommHintKeyFooter" })
+  T.eq(chunks[3], { " comment", "IncommHintFooter" })
+  T.eq(chunks[4], { " · ", "IncommHintSepFooter" })
+  for _, group in ipairs({ "IncommHintKeyFooter", "IncommHintFooter", "IncommHintSepFooter" }) do
+    T.eq(vim.api.nvim_get_hl(0, { name = group }).bg, 0x101010, group .. " sits on the border's background")
+  end
+end)

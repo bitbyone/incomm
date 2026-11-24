@@ -39,7 +39,7 @@ end
 ---@class incomm.ComposerOpts
 ---@field title string
 ---@field text? string initial contents (editing an existing comment)
----@field hint? string
+---@field hint? incomm.Hint|string key hints (ui/hints.lua)
 ---@field anchor? "cursor"|"center" where the float opens
 ---@field on_submit fun(text: string)
 ---@field on_cancel? fun()
@@ -78,13 +78,13 @@ function M.open(opts)
     border = "rounded",
     title = " " .. opts.title .. " ",
     title_pos = "left",
-    footer = " " .. (opts.hint or (pretty_key(settings.save) .. " save   <Esc> cancel")) .. " ",
+    footer = require("incomm.ui.hints").chunks(opts.hint or { { pretty_key(settings.save), "save" }, { "esc", "cancel" } }),
     footer_pos = "right",
     zindex = 70, -- above the explorer's floats
   }))
   vim.wo[win].wrap = true
   vim.wo[win].linebreak = true
-  vim.wo[win].winhighlight = "FloatTitle:IncommComposerTitle,FloatFooter:IncommComposerHint"
+  vim.wo[win].winhighlight = "FloatTitle:IncommComposerTitle"
 
   local closed = false
   local function close()

@@ -109,11 +109,32 @@ keymaps. Requires Neovim 0.10+.
 
 The Go CLI is the workhorse for agents and automated workflows.
 
-*Currently preparing for Homebrew release.*
+With Homebrew, from the tap in this repository; it builds the release on your
+machine from its tagged commit:
+
+```sh
+brew tap bitbyone/incomm https://github.com/bitbyone/incomm
+brew install incomm
+```
+
+On Windows, with Scoop, from the bucket in this repository; it installs the
+release's archive, checked against its SHA-256:
+
+```powershell
+scoop bucket add incomm https://github.com/bitbyone/incomm
+scoop install incomm
+```
+
+Test builds go to a nightly channel of their own, from the same tap and
+bucket; it replaces the stable incomm rather than standing beside it:
+
+```sh
+brew install incomm-nightly       # or: scoop install incomm-nightly
+```
 
 `incomm version` prints the CLI version and the notes format it understands (`--json` for tools).
 
-**Build and install** (needs Go):
+**Or build and install from a checkout** (needs Go):
 
 ```bash
 make install     # -> ~/.local/bin/incomm  (PREFIX=/usr/local to change it)

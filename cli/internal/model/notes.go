@@ -11,7 +11,9 @@ import (
 
 // SchemaVersion is the newest notes.json format this build understands, and the
 // version every save stamps. Any change to the JSON shape bumps it, and a build
-// refuses to read or write a file whose version is greater than its own.
+// refuses to read or write a file whose version is greater than its own. That
+// breaks every older incomm, so a release that bumps it is a new major
+// version: from vX.Y to v(X+1).0.
 const SchemaVersion = 2
 
 // LegacyVersion is what a file with no version field is taken to be.

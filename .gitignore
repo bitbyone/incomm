@@ -11,6 +11,7 @@ out/
 # ---- Go CLI ----
 cli/incomm
 cli/dist/
+/dist/
 *.test
 *.out
 

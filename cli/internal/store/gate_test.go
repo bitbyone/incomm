@@ -43,7 +43,7 @@ func TestLoadRefusesANewerFormatEvenWhenItsShapeIsUnreadable(t *testing.T) {
 	if incompatible.Found != 99 || incompatible.Supported != model.SchemaVersion {
 		t.Errorf("found=%d supported=%d", incompatible.Found, incompatible.Supported)
 	}
-	for _, want := range []string{".incomm/notes.json", "format v99", "understands up to v2", "update incomm"} {
+	for _, want := range []string{".incomm/notes.json", "format v99", "understands up to v2", "update incomm", "brew upgrade incomm", "scoop update incomm"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("message %q is missing %q", err.Error(), want)
 		}

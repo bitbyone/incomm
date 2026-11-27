@@ -9,8 +9,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// version is overridable at build time with -ldflags "-X incomm/cmd.version=...".
-var version = "1.1.0"
+// version is the release, set at build time from the tag without its v
+// (-ldflags "-X incomm/cmd.version=1.2"): the Homebrew formula, the release
+// workflow and make build all pass it. A build from anywhere else is dev.
+var version = "dev"
 
 // Global flags shared by all subcommands.
 var (
@@ -23,7 +25,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:           "incomm",
 	Short:         "Line-anchored context threads for humans and AI agents",
-	Version:       version,
+	Version:       versionString(),
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

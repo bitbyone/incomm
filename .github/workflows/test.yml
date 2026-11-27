@@ -1,0 +1,89 @@
+# Every commit pushed to a branch, and every pull request, runs the CLI's
+# tests; a release waits for this run of its commit on main to have passed.
+# The token is read-only: the tests run the repository's code, and a pull
+# request's code is whoever wrote it.
+name: test
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # The race detector runs on Linux, as in unagit, whose macOS runs
+        # saw its runtime crash in children between fork and exec; a race
+        # in Go code is the same on either system.
+        include:
+          - os: ubuntu-latest
+            target: test
+          - os: macos-latest
+            target: test-fast
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      - name: Check formatting and vet
+        working-directory: cli
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::not gofmt-clean: $unformatted"
+            exit 1
+          fi
+          go vet ./...
+      - name: Test
+        run: make ${{ matrix.target }}
+
+  # The CLI is built for Linux, macOS and Windows on amd64 and arm64; each
+  # must compile and vet clean, whatever the machine the change was made on.
+  cross:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      - name: Build and vet every platform
+        run: make cross
+
+  # On Windows the suite runs under Git's bash, which brings git; Scoop
+  # installs the Windows build, so it is tested there too.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      - name: Build
+        shell: bash
+        working-directory: cli
+        run: |
+          go build -o incomm.exe .
+          ./incomm.exe version
+      - name: Test
+        shell: bash
+        working-directory: cli
+        run: go test -count=1 ./...

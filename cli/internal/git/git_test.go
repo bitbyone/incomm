@@ -103,8 +103,8 @@ func TestDetectBranchWorktree(t *testing.T) {
 
 func TestSanitizeBranch(t *testing.T) {
 	cases := map[string]string{
-		"main":                "main",
-		"feature/cool-thing":  "feature_cool-thing",
+		"main":               "main",
+		"feature/cool-thing": "feature_cool-thing",
 		"release/v1.2.3":     "release_v1.2.3",
 		"fix/multi/level":    "fix_multi_level",
 		"simple-branch":      "simple-branch",

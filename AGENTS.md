@@ -117,6 +117,34 @@ go test ./...           # run tests
 go vet ./...
 ```
 
+From the repository root: `make build`, `make test` (with the race detector),
+`make cross` (build and vet for Linux, macOS and Windows, amd64 and arm64) and
+`make dist VERSION=X.Y` (the Windows archives a release publishes, for Scoop).
+
+A CLI release is a tag `vX.Y` - two numbers, nothing else - on a commit of
+main; a test build for the nightly channel is `vX.Y-pre.N` there, released
+the same way but as a GitHub prerelease, never the latest, writing
+`Formula/incomm-nightly.rb` (whole, from the tag) and
+`bucket/incomm-nightly.json` and leaving the stable ones as they are. Every
+push and pull request runs `.github/workflows/test.yml` (Linux with the race
+detector, macOS, Windows under Git's bash, and `make cross`; read-only
+token); `.github/workflows/release.yml` waits for that run of the tagged
+commit to have passed - it does not run the tests again - builds the tag,
+checks that `incomm version` prints `X.Y`, and builds the Windows archives
+(`make dist`); only then do the jobs that may write, running none of the
+repository's code, publish those archives as the tag's GitHub release and
+point `Formula/incomm.rb` at the tag and its commit and `bucket/incomm.json`
+(Scoop) at the archives and their sums, and push them to main. Keep that
+split: a step that runs the code never holds a token that writes, and
+actions are pinned by commit. Homebrew builds from source and refuses if the
+tag has moved; only Windows' archives are published compiled. The version is
+baked in with `-X incomm/cmd.version=X.Y` (no `v`); any other build is `dev`
+with its commit. A release whose `SchemaVersion` is higher than the last
+release's is a new major version, `v(X+1).0`: every older incomm refuses the
+files it writes (§7 rule 11). Do not edit the formulas' tags or revisions, or the
+manifests, by hand: change the workflow that writes them. The editor plugins
+are not part of a release.
+
 ---
 
 ## 4. The agent workflow (the whole point)
@@ -172,7 +200,7 @@ any compatible editor/UI integration.
 | `anchor set <id> [--line N\|N:M] [--start-prefix …] [--end-prefix …] [--context-before …] [--context-after …] [--checksum …] [--orphaned] [--no-recompute]` | Low-level: set a comment's final position and/or edit anchor fields. `--line` recomputes the anchor from the file and un-orphans (unless `--no-recompute`). |
 | `anchor recompute [--id X] [--file F]` | Regenerate anchor text from the file at each comment's current lines (no move); un-orphans on success. |
 | `set <id> [--reply RID] [--audience A] [--source-url U --source-id N --source-thread T]` | Change a comment's (or one reply's) audience, or record its `source` (e.g. after publishing). A value left out keeps what is stored. `private` is refused. |
-| `version [--json]` | CLI version and the notes format it understands: `{"version":"1.1.0","formatVersion":2}`. |
+| `version [--json]` | CLI version and the notes format it understands: `{"version":"1.2","formatVersion":2}`. |
 | `skill path` | Write `~/.config/.incomm/SKILL.md`, print its absolute path (plain, nothing else). |
 
 **Internals** (`cli/internal/`):
@@ -492,11 +520,12 @@ These are hard-won and non-obvious. **Respect them when changing the editor UI.*
 11. **The version gate is fail-closed.** Every reader checks `version` before decoding the
     body (a newer shape may not decode at all) and refuses a file newer than it supports: the
     CLI exits 1 with "`.incomm/notes_<branch>.json` is format vN, this incomm understands up
-    to vM - update incomm", the plugins stop reading, show one notification per file and
+    to vM - update incomm (brew upgrade incomm, or scoop update incomm)", the plugins stop reading, show one notification per file and
     version, and never write until the file is compatible again. Without this an older
     component would rewrite the file and drop the newer fields (and the plugins would overwrite
     the file with an empty model after a failed load). Any change to the JSON shape bumps
-    `SCHEMA_VERSION` in all three implementations.
+    `SCHEMA_VERSION` in all three implementations, and is a breaking change: the CLI release
+    that carries it is a new major version (vX.Y -> v(X+1).0), never a minor one.
 
 ---
 

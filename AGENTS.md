@@ -141,7 +141,9 @@ tag has moved; only Windows' archives are published compiled. The version is
 baked in with `-X incomm/cmd.version=X.Y` (no `v`); any other build is `dev`
 with its commit. A release whose `SchemaVersion` is higher than the last
 release's is a new major version, `v(X+1).0`: every older incomm refuses the
-files it writes (§7 rule 11). Do not edit the formulas' tags or revisions, or the
+files it writes (§7 rule 11). The release workflow refuses a tag that raises
+`SchemaVersion` over the last stable release below it without raising X; a
+nightly is held to the stable release it leads to. Do not edit the formulas' tags or revisions, or the
 manifests, by hand: change the workflow that writes them. The editor plugins
 are not part of a release.
 

@@ -13,6 +13,10 @@
 # and bucket/incomm-nightly.json instead, leaving the stable formula and
 # manifest as they are.
 #
+# A tag that raises the notes format (SchemaVersion) over the last stable
+# release must raise the major version too: every older incomm refuses the
+# files the new one writes.
+#
 # The tests are not run again: they ran when the commit was pushed to main
 # (test.yml), and running them twice only gives a flaky one a second chance
 # to stop the release. A failure there is re-run there, then this release is
@@ -89,6 +93,41 @@ jobs:
             echo "::error::$GITHUB_REF_NAME is on a commit that is not on main"
             exit 1
           fi
+      - name: Check that a new notes format comes with a new major version
+        run: |
+          # A higher SchemaVersion makes every older incomm refuse the files
+          # this one writes, so it is a breaking change: against the last
+          # stable release below this tag, it must raise X. A nightly is held
+          # to the stable release it leads to, so v2.0-pre.N may change the
+          # format as often as it likes and v1.4-pre.N may not.
+          schema() {
+            git show "$1:cli/internal/model/notes.go" |
+              sed -n 's/^const SchemaVersion = \([0-9][0-9]*\)$/\1/p' | grep .
+          }
+          version=${GITHUB_REF_NAME#v}
+          version=${version%-pre.*}
+          major=${version%.*} minor=${version#*.}
+          previous=$(git tag -l 'v[0-9]*.[0-9]*' |
+            awk -F'[v.]' -v major="$major" -v minor="$minor" '
+              /^v[0-9]+\.[0-9]+$/ && ($2 < major || $2 == major && $3 < minor) { print $2, $3 }' |
+            sort -n -k1,1 -k2,2 | tail -1 | tr ' ' .)
+          if [ -z "$previous" ]; then
+            echo "no stable release before $GITHUB_REF_NAME to compare the notes format with"
+            exit 0
+          fi
+          if ! now=$(schema "$GITHUB_SHA"); then
+            echo "::error::found no const SchemaVersion in cli/internal/model/notes.go of $GITHUB_REF_NAME"
+            exit 1
+          fi
+          if ! then=$(schema "v$previous"); then
+            echo "::error::found no const SchemaVersion in cli/internal/model/notes.go of v$previous"
+            exit 1
+          fi
+          if [ "$now" -gt "$then" ] && [ "$major" -le "${previous%.*}" ]; then
+            echo "::error::$GITHUB_REF_NAME raises the notes format from v$then (v$previous) to v$now, which older incomm refuses - release it as v$((${previous%.*} + 1)).0"
+            exit 1
+          fi
+          echo "notes format v$now, v$then at v$previous: $GITHUB_REF_NAME may be released"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: cli/go.mod

@@ -10,6 +10,7 @@ import (
 func TestWriteSkillFile(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp) // os.UserHomeDir on Windows
 
 	path, err := writeSkillFile()
 	if err != nil {

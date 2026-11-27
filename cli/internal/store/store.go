@@ -31,7 +31,7 @@ type IncompatibleError struct {
 
 func (e *IncompatibleError) Error() string {
 	return fmt.Sprintf("%s is format v%d, this incomm understands up to v%d - update incomm (brew upgrade incomm, or scoop update incomm)",
-		filepath.Join(DirName, filepath.Base(e.Path)), e.Found, e.Supported)
+		DirName+"/"+filepath.Base(e.Path), e.Found, e.Supported)
 }
 
 // Store is bound to a resolved project root and an optional git branch.

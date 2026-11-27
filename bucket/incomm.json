@@ -1,0 +1,30 @@
+{
+  "version": "1.1",
+  "description": "Line-anchored context threads for humans and AI agents",
+  "homepage": "https://github.com/bitbyone/incomm",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/bitbyone/incomm/releases/download/v1.1/incomm_1.1_windows_amd64.zip",
+      "hash": "2a809df68215c53d20257e23f22786ad1e8be7efd38a3efd5b92193df5181726"
+    },
+    "arm64": {
+      "url": "https://github.com/bitbyone/incomm/releases/download/v1.1/incomm_1.1_windows_arm64.zip",
+      "hash": "3d8a8beddcaa5c8bdfbdfc0818827d0c65a9c36cad7df4fa9d8992fc07b39548"
+    }
+  },
+  "bin": "incomm.exe",
+  "checkver": {
+    "github": "https://github.com/bitbyone/incomm"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/bitbyone/incomm/releases/download/v$version/incomm_$version_windows_amd64.zip"
+      },
+      "arm64": {
+        "url": "https://github.com/bitbyone/incomm/releases/download/v$version/incomm_$version_windows_arm64.zip"
+      }
+    }
+  }
+}
